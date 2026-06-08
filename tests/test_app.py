@@ -1,14 +1,17 @@
 import importlib
 import os
+from pathlib import Path
 import sys
 import types
 
 
 class FakeUpload:
-    name = "sample.wav"
+    def __init__(self, name="sample.wav", data=b"audio-bytes"):
+        self.name = name
+        self.data = data
 
     def getvalue(self):
-        return b"audio-bytes"
+        return self.data
 
 
 class FakeModel:
@@ -62,3 +65,39 @@ def test_transcribe_uploaded_file_deletes_temp_file(monkeypatch):
     assert transcript == "hello world"
     assert model.seen_path is not None
     assert not os.path.exists(model.seen_path)
+
+
+def test_write_uploaded_file_normalizes_supported_suffix(monkeypatch):
+    app = import_app(monkeypatch)
+
+    path = app.write_uploaded_file(FakeUpload(name="VOICE.MP3"))
+    try:
+        assert path.endswith(".mp3")
+        assert Path(path).read_bytes() == b"audio-bytes"
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_write_uploaded_file_uses_fallback_for_unsupported_suffix(monkeypatch):
+    app = import_app(monkeypatch)
+
+    path = app.write_uploaded_file(FakeUpload(name="../../secret.exe"))
+    try:
+        assert path.endswith(".audio")
+        assert Path(path).read_bytes() == b"audio-bytes"
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_write_uploaded_file_uses_fallback_without_name(monkeypatch):
+    app = import_app(monkeypatch)
+
+    path = app.write_uploaded_file(FakeUpload(name=None))
+    try:
+        assert path.endswith(".audio")
+        assert Path(path).read_bytes() == b"audio-bytes"
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)

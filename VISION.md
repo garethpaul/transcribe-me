@@ -16,11 +16,11 @@ Priority:
 - Preserve the Streamlit upload-to-transcription flow
 - Keep Whisper model choice visible
 - Treat uploaded audio as sensitive user-provided data
+- Normalize uploaded file suffixes before temp-file writes
 - Maintain minimal dependencies
 
 Next priorities:
 
-- Delete temporary files after transcription
 - Add README setup notes for Python, ffmpeg, and model download behavior
 - Add file size and duration guidance
 - Add error handling for unsupported or failed audio files

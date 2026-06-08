@@ -19,9 +19,9 @@ This README is based on the checked-in source, manifests, scripts, and repositor
 Additional scan context:
 
 - Source directories: no top-level source directories detected
-- Dependency and build manifests: requirements.txt
+- Dependency and build manifests: Makefile, requirements.txt, test-requirements.txt
 - Entry points or build surfaces: app.py
-- Test-looking files: no obvious test files detected
+- Test-looking files: tests/test_app.py
 
 ## Getting Started
 
@@ -43,18 +43,21 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 
 ## Running or Using the Project
 
-- Run `python app.py` after installing Python dependencies.
+- Run `python -m streamlit run app.py` after installing Python dependencies.
 
 ## Testing and Verification
 
 - `make verify` runs Python syntax checks and focused tests with fake
-  Streamlit/Whisper modules.
+  Streamlit/Whisper modules, including upload temp-file cleanup and suffix
+  handling.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
 
 ## Configuration and Secrets
 
-- Detected references to OpenAI. Keep API keys, OAuth credentials, tokens, and account-specific values in local configuration only.
+- The app uses the local Whisper package and does not require an API key by
+  default. First-run model downloads and any future external transcription
+  service credentials should be made explicit and kept out of git.
 
 ## Security and Privacy Notes
 
