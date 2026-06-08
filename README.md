@@ -13,7 +13,14 @@ This README is based on the checked-in source, manifests, scripts, and repositor
 
 - `requirements.txt` - Python dependency or packaging metadata
 - `app.py`
+- `CHANGES.md` - maintenance history for upload handling checks
+- `Makefile` - local verification entry points
+- `docs/plans` - completed maintenance plans for the current baseline
+- `plans` - historical implementation notes
+- `scripts` - documentation-plan validators
 - `SECURITY.md` - security reporting and disclosure guidance
+- `test-requirements.txt` - test dependency notes
+- `tests` - focused Streamlit/Whisper behavior tests
 - `VISION.md` - project direction and maintenance guardrails
 
 Additional scan context:
@@ -50,6 +57,7 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 - `make check` runs Python syntax checks and focused tests with fake
   Streamlit/Whisper modules, including upload temp-file cleanup and suffix
   handling.
+- `make check` also requires completed canonical plans under `docs/plans`.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
 
@@ -69,6 +77,8 @@ When the required SDK or runtime is unavailable, use static checks and source re
 
 - See `SECURITY.md` for vulnerability reporting and safe research guidance.
 - See `VISION.md` for project direction and contribution guardrails.
+- See `docs/plans/2026-06-08-transcribe-me-baseline.md` for the canonical
+  upload and temporary-file handling baseline.
 
 ## Contributing
 

@@ -13,3 +13,5 @@
   model.
 - Added temporary audio-file cleanup after transcription.
 - Added generated Python artifact ignores and test dependency metadata.
+- Added canonical `docs/plans` coverage and a docs-plan checker under
+  `make check`.

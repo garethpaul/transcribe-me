@@ -17,6 +17,7 @@ Priority:
 - Keep Whisper model choice visible
 - Treat uploaded audio as sensitive user-provided data
 - Normalize uploaded file suffixes before temp-file writes
+- Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 
 Next priorities:
