@@ -47,7 +47,7 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 
 ## Testing and Verification
 
-- `make verify` runs Python syntax checks and focused tests with fake
+- `make check` runs Python syntax checks and focused tests with fake
   Streamlit/Whisper modules, including upload temp-file cleanup and suffix
   handling.
 
