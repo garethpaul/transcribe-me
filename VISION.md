@@ -38,7 +38,7 @@ Audio can contain private speech and ambient information. The app should keep
 processing local by default, avoid retaining temporary files, and make any
 external model or service calls explicit.
 
-## What We Will Not Merge For Now
+## What We Will Not Merge (For Now)
 
 - Committed audio samples from real users
 - Silent upload of audio or transcripts
