@@ -28,7 +28,7 @@ Additional scan context:
 ### Prerequisites
 
 - Git
-- Python matching the era of the project
+- Python 3
 
 ### Setup
 
@@ -36,6 +36,7 @@ Additional scan context:
 git clone https://github.com/garethpaul/transcribe-me.git
 cd transcribe-me
 python -m pip install -r requirements.txt
+python -m pip install -r test-requirements.txt
 ```
 
 The setup commands above are derived from repository files. Legacy mobile, Python, or JavaScript samples may require older SDKs or package versions than a modern workstation uses by default.
@@ -46,7 +47,8 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 
 ## Testing and Verification
 
-- No dedicated automated test command was identified from the checked-in files. Verify changes by running the relevant build or manually exercising the sample.
+- `make verify` runs Python syntax checks and focused tests with fake
+  Streamlit/Whisper modules.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
 
