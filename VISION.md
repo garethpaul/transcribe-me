@@ -38,7 +38,6 @@ Canonical security policy and reporting:
 
 - [`SECURITY.md`](SECURITY.md)
 
-
 Audio can contain private speech and ambient information. The app should keep
 processing local by default, avoid retaining temporary files, and make any
 external model or service calls explicit.
