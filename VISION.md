@@ -44,3 +44,6 @@ external model or service calls explicit.
 - Silent upload of audio or transcripts
 - Persistent transcript storage without a privacy model
 - Hidden telemetry
+
+This list is a roadmap guardrail, not a permanent rule.
+Strong user demand and strong technical rationale can change it.
