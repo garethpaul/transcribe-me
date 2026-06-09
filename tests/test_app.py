@@ -149,6 +149,39 @@ def test_main_reports_transcription_failure_without_raw_exception(monkeypatch):
     assert "private-file" not in errors[0]
 
 
+def test_main_renders_transcript_as_plain_text(monkeypatch):
+    writes = []
+    texts = []
+    errors = []
+
+    class MarkdownLikeModel:
+        def transcribe(self, path):
+            return {"text": "  **secret** <b>raw</b>  "}
+
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FakeUpload(),
+        write=lambda message: writes.append(message),
+        text=lambda message: texts.append(message),
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: MarkdownLikeModel())
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+
+    app.main()
+
+    assert errors == []
+    assert writes == [
+        "Transcribing... This may take a while for large files.",
+        "Transcription:",
+    ]
+    assert texts == ["**secret** <b>raw</b>"]
+
+
 def test_transcribe_uploaded_file_deletes_temp_file(monkeypatch):
     app = import_app(monkeypatch)
     model = FakeModel()

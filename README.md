@@ -58,7 +58,7 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
   Streamlit/Whisper modules, including upload temp-file cleanup, suffix
   handling, unreadable/empty/oversized/non-byte upload rejection, and generic
   transcription failure reporting. Tests also require transcript text to be
-  string, non-blank, and trimmed before display.
+  string, non-blank, trimmed, and displayed as plain text.
 - `make check` also requires completed canonical plans under `docs/plans`.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
@@ -91,6 +91,8 @@ When the required SDK or runtime is unavailable, use static checks and source re
   type validation coverage.
 - See `docs/plans/2026-06-09-upload-read-validation.md` for unreadable upload
   validation coverage.
+- See `docs/plans/2026-06-09-plain-text-transcript-output.md` for transcript
+  rendering coverage.
 
 ## Contributing
 

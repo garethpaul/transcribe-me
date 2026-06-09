@@ -23,6 +23,10 @@ def main():
         if "Status: Completed" not in plan or "make check" not in plan:
             failures.append(f"{plan_path.relative_to(ROOT)} must record completed status and make check verification")
 
+    app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+    if "st.text(transcript)" not in app_source:
+        failures.append("app.py must render transcript output as plain text")
+
     if failures:
         print("Documentation plan checks failed:", file=sys.stderr)
         for failure in failures:

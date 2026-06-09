@@ -2,6 +2,8 @@
 
 ## 2026-06-09
 
+- Render successful transcripts as plain text and added no-network coverage for
+  markdown-like transcript output.
 - Routed malformed or unreadable upload objects through user-facing upload
   validation before loading Whisper.
 - Added tests for missing and failing upload readers.

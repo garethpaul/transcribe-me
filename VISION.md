@@ -21,6 +21,7 @@ Priority:
   temporary files
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display
+- Display transcripts as plain text
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 

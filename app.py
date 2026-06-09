@@ -107,7 +107,7 @@ def main():
             st.error(str(error))
             return
         st.write("Transcription:")
-        st.write(transcript)
+        st.text(transcript)
 
 
 if __name__ == "__main__":
