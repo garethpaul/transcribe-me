@@ -55,8 +55,8 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 ## Testing and Verification
 
 - `make check` runs Python syntax checks and focused tests with fake
-  Streamlit/Whisper modules, including upload temp-file cleanup and suffix
-  handling.
+  Streamlit/Whisper modules, including upload temp-file cleanup, suffix
+  handling, and empty/oversized upload rejection.
 - `make check` also requires completed canonical plans under `docs/plans`.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
@@ -79,6 +79,8 @@ When the required SDK or runtime is unavailable, use static checks and source re
 - See `VISION.md` for project direction and contribution guardrails.
 - See `docs/plans/2026-06-08-transcribe-me-baseline.md` for the canonical
   upload and temporary-file handling baseline.
+- See `docs/plans/2026-06-08-upload-size-validation.md` for upload content and
+  size validation coverage.
 
 ## Contributing
 
