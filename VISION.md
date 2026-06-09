@@ -17,7 +17,7 @@ Priority:
 - Keep Whisper model choice visible
 - Treat uploaded audio as sensitive user-provided data
 - Normalize uploaded file suffixes before temp-file writes
-- Reject empty and oversized uploads before writing temporary files
+- Reject empty, oversized, and non-byte uploads before writing temporary files
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display
 - Keep completed maintenance plans under `docs/plans`

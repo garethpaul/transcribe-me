@@ -213,6 +213,24 @@ def test_write_uploaded_file_rejects_empty_upload(monkeypatch):
         app.write_uploaded_file(FakeUpload(data=b""))
 
 
+def test_write_uploaded_file_rejects_non_bytes_upload(monkeypatch):
+    app = import_app(monkeypatch)
+
+    with pytest.raises(app.UploadValidationError, match="bytes"):
+        app.write_uploaded_file(FakeUpload(data="not-bytes"))
+
+
+def test_write_uploaded_file_normalizes_bytearray_upload(monkeypatch):
+    app = import_app(monkeypatch)
+
+    path = app.write_uploaded_file(FakeUpload(data=bytearray(b"audio-bytes")))
+    try:
+        assert Path(path).read_bytes() == b"audio-bytes"
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
 def test_write_uploaded_file_rejects_oversized_upload(monkeypatch):
     app = import_app(monkeypatch)
     monkeypatch.setattr(app, "MAX_UPLOAD_BYTES", 4)

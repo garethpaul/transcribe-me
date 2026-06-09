@@ -33,6 +33,9 @@ def uploaded_audio_suffix(uploaded_file):
 
 def uploaded_audio_bytes(uploaded_file):
     data = uploaded_file.getvalue()
+    if not isinstance(data, (bytes, bytearray)):
+        raise UploadValidationError("Uploaded audio file must be bytes.")
+    data = bytes(data)
     if not data:
         raise UploadValidationError("Uploaded audio file is empty.")
     if len(data) > MAX_UPLOAD_BYTES:

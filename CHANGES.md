@@ -2,6 +2,9 @@
 
 ## 2026-06-09
 
+- Rejected non-byte upload payloads before temporary file writes.
+- Added upload validation coverage for unexpected non-byte `getvalue()`
+  results.
 - Added transcript text validation for Whisper results before display.
 - Added tests for trimmed, missing, non-string, and blank transcript text.
 
