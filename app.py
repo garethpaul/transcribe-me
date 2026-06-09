@@ -9,6 +9,7 @@ ALLOWED_AUDIO_SUFFIXES = {".m4a", ".mp3", ".mpeg", ".wav"}
 FALLBACK_AUDIO_SUFFIX = ".audio"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
+UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 
 
 class UploadValidationError(ValueError):
@@ -32,7 +33,13 @@ def uploaded_audio_suffix(uploaded_file):
 
 
 def uploaded_audio_bytes(uploaded_file):
-    data = uploaded_file.getvalue()
+    getvalue = getattr(uploaded_file, "getvalue", None)
+    if not callable(getvalue):
+        raise UploadValidationError(UPLOAD_READ_FAILURE_MESSAGE)
+    try:
+        data = getvalue()
+    except Exception as error:
+        raise UploadValidationError(UPLOAD_READ_FAILURE_MESSAGE) from error
     if not isinstance(data, (bytes, bytearray)):
         raise UploadValidationError("Uploaded audio file must be bytes.")
     data = bytes(data)

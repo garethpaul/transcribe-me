@@ -16,6 +16,15 @@ class FakeUpload:
         return self.data
 
 
+class MissingReaderUpload:
+    name = "sample.wav"
+
+
+class FailingReaderUpload(FakeUpload):
+    def getvalue(self):
+        raise RuntimeError("failed reading /tmp/private-upload.wav")
+
+
 class FakeModel:
     def __init__(self):
         self.seen_path = None
@@ -92,6 +101,31 @@ def test_main_rejects_invalid_upload_before_loading_model(monkeypatch):
 
     assert errors == ["Uploaded audio file is empty."]
     assert loaded == []
+
+
+def test_main_rejects_unreadable_upload_before_loading_model(monkeypatch):
+    errors = []
+    loaded = []
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FailingReaderUpload(),
+        write=lambda *args, **kwargs: None,
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(
+        load_model=lambda name: loaded.append(name) or FakeModel()
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+
+    app.main()
+
+    assert errors == ["Uploaded audio file could not be read."]
+    assert loaded == []
+    assert "private-upload" not in errors[0]
 
 
 def test_main_reports_transcription_failure_without_raw_exception(monkeypatch):
@@ -218,6 +252,20 @@ def test_write_uploaded_file_rejects_non_bytes_upload(monkeypatch):
 
     with pytest.raises(app.UploadValidationError, match="bytes"):
         app.write_uploaded_file(FakeUpload(data="not-bytes"))
+
+
+def test_write_uploaded_file_rejects_upload_without_getvalue(monkeypatch):
+    app = import_app(monkeypatch)
+
+    with pytest.raises(app.UploadValidationError, match="could not be read"):
+        app.write_uploaded_file(MissingReaderUpload())
+
+
+def test_write_uploaded_file_rejects_upload_read_errors(monkeypatch):
+    app = import_app(monkeypatch)
+
+    with pytest.raises(app.UploadValidationError, match="could not be read"):
+        app.write_uploaded_file(FailingReaderUpload())
 
 
 def test_write_uploaded_file_normalizes_bytearray_upload(monkeypatch):

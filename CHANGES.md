@@ -2,6 +2,9 @@
 
 ## 2026-06-09
 
+- Routed malformed or unreadable upload objects through user-facing upload
+  validation before loading Whisper.
+- Added tests for missing and failing upload readers.
 - Rejected non-byte upload payloads before temporary file writes.
 - Added upload validation coverage for unexpected non-byte `getvalue()`
   results.
