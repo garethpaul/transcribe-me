@@ -19,6 +19,7 @@ Priority:
 - Normalize uploaded file suffixes before temp-file writes
 - Reject unreadable, empty, oversized, and non-byte uploads before writing
   temporary files
+- Make upload limits visible before users select audio
 - Clean up temporary files when upload writes fail
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display

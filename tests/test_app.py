@@ -104,6 +104,26 @@ def test_main_rejects_invalid_upload_before_loading_model(monkeypatch):
     assert loaded == []
 
 
+def test_main_file_uploader_documents_upload_limit(monkeypatch):
+    captured = {}
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: captured.update(kwargs),
+        write=lambda *args, **kwargs: None,
+        error=lambda *args, **kwargs: None,
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: FakeModel())
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+
+    app.main()
+
+    assert "25 MB" in captured["help"]
+
+
 def test_main_rejects_unreadable_upload_before_loading_model(monkeypatch):
     errors = []
     loaded = []

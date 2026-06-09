@@ -51,6 +51,8 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 ## Running or Using the Project
 
 - Run `python -m streamlit run app.py` after installing Python dependencies.
+- The file uploader advertises the current 25 MB upload limit before
+  transcription starts.
 
 ## Testing and Verification
 
@@ -59,7 +61,8 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
   handling, unreadable/empty/oversized/non-byte upload rejection, upload write
   failure cleanup, and generic transcription failure reporting. Tests also
   require transcript text to be string, non-blank, trimmed, and displayed as
-  plain text.
+  plain text. The UI tests also keep the uploader help text aligned with the
+  configured upload limit.
 - `make check` also requires completed canonical plans under `docs/plans`.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
@@ -96,6 +99,8 @@ When the required SDK or runtime is unavailable, use static checks and source re
   cleanup coverage.
 - See `docs/plans/2026-06-09-plain-text-transcript-output.md` for transcript
   rendering coverage.
+- See `docs/plans/2026-06-09-upload-limit-help.md` for upload limit help text
+  coverage.
 
 ## Contributing
 

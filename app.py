@@ -8,6 +8,8 @@ from pathlib import Path
 ALLOWED_AUDIO_SUFFIXES = {".m4a", ".mp3", ".mpeg", ".wav"}
 FALLBACK_AUDIO_SUFFIX = ".audio"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_UPLOAD_MEGABYTES = MAX_UPLOAD_BYTES // (1024 * 1024)
+UPLOAD_HELP_TEXT = "Upload an audio file up to %d MB." % MAX_UPLOAD_MEGABYTES
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
@@ -102,6 +104,7 @@ def main():
     uploaded_file = st.file_uploader(
         "Upload audio file",
         type=sorted(suffix[1:] for suffix in ALLOWED_AUDIO_SUFFIXES),
+        help=UPLOAD_HELP_TEXT,
     )
 
     if uploaded_file is not None:

@@ -2,6 +2,8 @@
 
 ## 2026-06-09
 
+- Added file-uploader help text that advertises the 25 MB upload limit before
+  users choose an audio file.
 - Render successful transcripts as plain text and added no-network coverage for
   markdown-like transcript output.
 - Routed malformed or unreadable upload objects through user-facing upload

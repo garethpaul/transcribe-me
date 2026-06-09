@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS_PLANS = ROOT / "docs" / "plans"
 CANONICAL_PLAN = DOCS_PLANS / "2026-06-08-transcribe-me-baseline.md"
 UPLOAD_WRITE_PLAN = DOCS_PLANS / "2026-06-09-upload-write-cleanup.md"
+UPLOAD_LIMIT_HINT_PLAN = DOCS_PLANS / "2026-06-09-upload-limit-help.md"
 
 
 def main():
@@ -17,6 +18,8 @@ def main():
 
     if not UPLOAD_WRITE_PLAN.exists():
         failures.append("docs/plans/2026-06-09-upload-write-cleanup.md is missing")
+    if not UPLOAD_LIMIT_HINT_PLAN.exists():
+        failures.append("docs/plans/2026-06-09-upload-limit-help.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -35,12 +38,16 @@ def main():
         or "os.unlink(audio_path)" not in app_source
     ):
         failures.append("app.py must clean up temp files after upload write failures")
+    if "UPLOAD_HELP_TEXT" not in app_source or "help=UPLOAD_HELP_TEXT" not in app_source:
+        failures.append("app.py must show the upload byte limit in the file uploader help")
 
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:
         failures.append("tests must cover temp-file cleanup after upload write errors")
     if "test_main_reports_upload_write_failure_without_raw_exception" not in tests_source:
         failures.append("tests must cover user-facing upload write errors")
+    if "test_main_file_uploader_documents_upload_limit" not in tests_source:
+        failures.append("tests must cover upload limit help text")
 
     if failures:
         print("Documentation plan checks failed:", file=sys.stderr)
