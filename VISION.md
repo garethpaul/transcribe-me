@@ -18,6 +18,7 @@ Priority:
 - Treat uploaded audio as sensitive user-provided data
 - Normalize uploaded file suffixes before temp-file writes
 - Reject empty and oversized uploads before writing temporary files
+- Report transcription failures without leaking local exception details
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 
@@ -25,7 +26,7 @@ Next priorities:
 
 - Add README setup notes for Python, ffmpeg, and model download behavior
 - Add duration guidance for supported audio files
-- Add error handling for unsupported or failed audio files
+- Add manual verification notes for common audio formats
 
 Contribution rules:
 

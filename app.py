@@ -14,6 +14,10 @@ class UploadValidationError(ValueError):
     pass
 
 
+class TranscriptionError(RuntimeError):
+    pass
+
+
 @st.cache_resource
 def get_model():
     return whisper.load_model("base")
@@ -46,10 +50,15 @@ def write_uploaded_file(uploaded_file):
 def transcribe_uploaded_file(uploaded_file, model=None):
     audio_path = write_uploaded_file(uploaded_file)
     try:
-        if model is None:
-            model = get_model()
-        result = model.transcribe(audio_path)
-        return result["text"]
+        try:
+            if model is None:
+                model = get_model()
+            result = model.transcribe(audio_path)
+            return result["text"]
+        except Exception as error:
+            raise TranscriptionError(
+                "Transcription failed. Try a supported audio file."
+            ) from error
     finally:
         if os.path.exists(audio_path):
             os.unlink(audio_path)
@@ -67,6 +76,9 @@ def main():
         try:
             transcript = transcribe_uploaded_file(uploaded_file)
         except UploadValidationError as error:
+            st.error(str(error))
+            return
+        except TranscriptionError as error:
             st.error(str(error))
             return
         st.write("Transcription:")

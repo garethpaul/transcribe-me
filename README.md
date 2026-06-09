@@ -56,7 +56,8 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
 
 - `make check` runs Python syntax checks and focused tests with fake
   Streamlit/Whisper modules, including upload temp-file cleanup, suffix
-  handling, and empty/oversized upload rejection.
+  handling, empty/oversized upload rejection, and generic transcription failure
+  reporting.
 - `make check` also requires completed canonical plans under `docs/plans`.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
@@ -81,6 +82,8 @@ When the required SDK or runtime is unavailable, use static checks and source re
   upload and temporary-file handling baseline.
 - See `docs/plans/2026-06-08-upload-size-validation.md` for upload content and
   size validation coverage.
+- See `docs/plans/2026-06-08-transcription-error-handling.md` for generic
+  transcription failure handling and cleanup coverage.
 
 ## Contributing
 

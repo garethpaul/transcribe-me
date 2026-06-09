@@ -26,6 +26,16 @@ class FakeModel:
         return {"text": "hello world"}
 
 
+class FailingModel:
+    def __init__(self):
+        self.seen_path = None
+
+    def transcribe(self, path):
+        self.seen_path = path
+        assert os.path.exists(path)
+        raise RuntimeError("ffmpeg failed at /tmp/private-file.wav")
+
+
 def import_app(monkeypatch):
     fake_streamlit = types.SimpleNamespace(
         title=lambda *args, **kwargs: None,
@@ -84,6 +94,27 @@ def test_main_rejects_invalid_upload_before_loading_model(monkeypatch):
     assert loaded == []
 
 
+def test_main_reports_transcription_failure_without_raw_exception(monkeypatch):
+    errors = []
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FakeUpload(),
+        write=lambda *args, **kwargs: None,
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: FailingModel())
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+
+    app.main()
+
+    assert errors == ["Transcription failed. Try a supported audio file."]
+    assert "private-file" not in errors[0]
+
+
 def test_transcribe_uploaded_file_deletes_temp_file(monkeypatch):
     app = import_app(monkeypatch)
     model = FakeModel()
@@ -93,6 +124,28 @@ def test_transcribe_uploaded_file_deletes_temp_file(monkeypatch):
     assert transcript == "hello world"
     assert model.seen_path is not None
     assert not os.path.exists(model.seen_path)
+
+
+def test_transcribe_uploaded_file_deletes_temp_file_after_failure(monkeypatch):
+    app = import_app(monkeypatch)
+    model = FailingModel()
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.transcribe_uploaded_file(FakeUpload(), model)
+
+    assert model.seen_path is not None
+    assert not os.path.exists(model.seen_path)
+
+
+def test_transcribe_uploaded_file_rejects_missing_text_result(monkeypatch):
+    app = import_app(monkeypatch)
+
+    class MissingTextModel:
+        def transcribe(self, path):
+            return {}
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.transcribe_uploaded_file(FakeUpload(), MissingTextModel())
 
 
 def test_write_uploaded_file_normalizes_supported_suffix(monkeypatch):

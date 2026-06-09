@@ -2,6 +2,8 @@
 
 ## 2026-06-08
 
+- Added generic transcription failure handling with temp-file cleanup tests and
+  user-facing Streamlit errors.
 - Added upload content and size validation before temporary file writes, with
   user-facing Streamlit errors and focused tests.
 - Added `make check` as the shared repository verification alias.
