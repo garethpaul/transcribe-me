@@ -2,6 +2,8 @@
 
 ## 2026-06-09
 
+- Fell back to the safe `.audio` suffix when uploaded filename inspection fails,
+  with no-model regression coverage.
 - Added file-uploader help text that advertises the 25 MB upload limit before
   users choose an audio file.
 - Render successful transcripts as plain text and added no-network coverage for

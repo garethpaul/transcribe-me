@@ -61,8 +61,9 @@ The setup commands above are derived from repository files. Legacy mobile, Pytho
   handling, unreadable/empty/oversized/non-byte upload rejection, upload write
   failure cleanup, and generic transcription failure reporting. Tests also
   require transcript text to be string, non-blank, trimmed, and displayed as
-  plain text. The UI tests also keep the uploader help text aligned with the
-  configured upload limit.
+  plain text. Upload suffix tests require malformed or unreadable upload names
+  to use the safe `.audio` fallback. The UI tests also keep the uploader help
+  text aligned with the configured upload limit.
 - `make check` also requires completed canonical plans under `docs/plans`.
 
 When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
@@ -101,6 +102,8 @@ When the required SDK or runtime is unavailable, use static checks and source re
   rendering coverage.
 - See `docs/plans/2026-06-09-upload-limit-help.md` for upload limit help text
   coverage.
+- See `docs/plans/2026-06-09-upload-name-fallback.md` for upload filename
+  fallback coverage.
 
 ## Contributing
 

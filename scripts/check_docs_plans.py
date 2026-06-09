@@ -8,6 +8,7 @@ DOCS_PLANS = ROOT / "docs" / "plans"
 CANONICAL_PLAN = DOCS_PLANS / "2026-06-08-transcribe-me-baseline.md"
 UPLOAD_WRITE_PLAN = DOCS_PLANS / "2026-06-09-upload-write-cleanup.md"
 UPLOAD_LIMIT_HINT_PLAN = DOCS_PLANS / "2026-06-09-upload-limit-help.md"
+UPLOAD_NAME_PLAN = DOCS_PLANS / "2026-06-09-upload-name-fallback.md"
 
 
 def main():
@@ -20,6 +21,8 @@ def main():
         failures.append("docs/plans/2026-06-09-upload-write-cleanup.md is missing")
     if not UPLOAD_LIMIT_HINT_PLAN.exists():
         failures.append("docs/plans/2026-06-09-upload-limit-help.md is missing")
+    if not UPLOAD_NAME_PLAN.exists():
+        failures.append("docs/plans/2026-06-09-upload-name-fallback.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -40,6 +43,11 @@ def main():
         failures.append("app.py must clean up temp files after upload write failures")
     if "UPLOAD_HELP_TEXT" not in app_source or "help=UPLOAD_HELP_TEXT" not in app_source:
         failures.append("app.py must show the upload byte limit in the file uploader help")
+    suffix_section = app_source.split(
+        "def uploaded_audio_suffix(uploaded_file):", 1
+    )[-1].split("def uploaded_audio_bytes(uploaded_file):", 1)[0]
+    if "except Exception:" not in suffix_section or "return FALLBACK_AUDIO_SUFFIX" not in suffix_section:
+        failures.append("app.py must fall back to the safe audio suffix when upload names fail")
 
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:
@@ -48,6 +56,8 @@ def main():
         failures.append("tests must cover user-facing upload write errors")
     if "test_main_file_uploader_documents_upload_limit" not in tests_source:
         failures.append("tests must cover upload limit help text")
+    if "test_write_uploaded_file_uses_fallback_when_name_fails" not in tests_source:
+        failures.append("tests must cover upload name fallback failures")
 
     if failures:
         print("Documentation plan checks failed:", file=sys.stderr)

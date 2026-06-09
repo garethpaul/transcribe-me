@@ -26,6 +26,17 @@ class FailingReaderUpload(FakeUpload):
         raise RuntimeError("failed reading /tmp/private-upload.wav")
 
 
+class FailingNameUpload:
+    data = b"audio-bytes"
+
+    @property
+    def name(self):
+        raise RuntimeError("failed reading /tmp/private-name.wav")
+
+    def getvalue(self):
+        return self.data
+
+
 class FakeModel:
     def __init__(self):
         self.seen_path = None
@@ -335,6 +346,18 @@ def test_write_uploaded_file_uses_fallback_without_name(monkeypatch):
     app = import_app(monkeypatch)
 
     path = app.write_uploaded_file(FakeUpload(name=None))
+    try:
+        assert path.endswith(".audio")
+        assert Path(path).read_bytes() == b"audio-bytes"
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_write_uploaded_file_uses_fallback_when_name_fails(monkeypatch):
+    app = import_app(monkeypatch)
+
+    path = app.write_uploaded_file(FailingNameUpload())
     try:
         assert path.endswith(".audio")
         assert Path(path).read_bytes() == b"audio-bytes"

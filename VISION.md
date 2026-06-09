@@ -17,6 +17,7 @@ Priority:
 - Keep Whisper model choice visible
 - Treat uploaded audio as sensitive user-provided data
 - Normalize uploaded file suffixes before temp-file writes
+- Treat uploaded filenames as optional metadata with a safe suffix fallback
 - Reject unreadable, empty, oversized, and non-byte uploads before writing
   temporary files
 - Make upload limits visible before users select audio
@@ -56,6 +57,7 @@ external model or service calls explicit.
 - Silent upload of audio or transcripts
 - Persistent transcript storage without a privacy model
 - Displaying non-string or blank transcription results as successful output
+- Upload filename handling that can bypass sanitized validation paths
 - Hidden telemetry
 
 This list is a roadmap guardrail, not a permanent rule.

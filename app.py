@@ -29,7 +29,10 @@ def get_model():
 
 
 def uploaded_audio_suffix(uploaded_file):
-    suffix = Path(str(getattr(uploaded_file, "name", "") or "")).suffix.lower()
+    try:
+        suffix = Path(str(getattr(uploaded_file, "name", "") or "")).suffix.lower()
+    except Exception:
+        return FALLBACK_AUDIO_SUFFIX
     if suffix in ALLOWED_AUDIO_SUFFIXES:
         return suffix
     return FALLBACK_AUDIO_SUFFIX
