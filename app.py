@@ -10,6 +10,7 @@ FALLBACK_AUDIO_SUFFIX = ".audio"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
+UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 
 
 class UploadValidationError(ValueError):
@@ -53,9 +54,16 @@ def uploaded_audio_bytes(uploaded_file):
 def write_uploaded_file(uploaded_file):
     suffix = uploaded_audio_suffix(uploaded_file)
     data = uploaded_audio_bytes(uploaded_file)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-        tmp_file.write(data)
-        return tmp_file.name
+    audio_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+            audio_path = tmp_file.name
+            tmp_file.write(data)
+            return audio_path
+    except Exception as error:
+        if audio_path and os.path.exists(audio_path):
+            os.unlink(audio_path)
+        raise UploadValidationError(UPLOAD_WRITE_FAILURE_MESSAGE) from error
 
 
 def normalized_transcript_text(result):

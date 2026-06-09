@@ -2,6 +2,7 @@ import importlib
 import os
 from pathlib import Path
 import sys
+import tempfile
 import types
 
 import pytest
@@ -125,6 +126,55 @@ def test_main_rejects_unreadable_upload_before_loading_model(monkeypatch):
 
     assert errors == ["Uploaded audio file could not be read."]
     assert loaded == []
+    assert "private-upload" not in errors[0]
+
+
+def test_main_reports_upload_write_failure_without_raw_exception(monkeypatch):
+    errors = []
+    loaded = []
+    created_paths = []
+    original_named_temporary_file = tempfile.NamedTemporaryFile
+
+    class FailingTempFile:
+        def __init__(self, *args, **kwargs):
+            self.file = original_named_temporary_file(
+                delete=False,
+                suffix=kwargs.get("suffix", ""),
+            )
+            self.name = self.file.name
+            created_paths.append(self.name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.file.close()
+
+        def write(self, data):
+            raise OSError("disk full at /tmp/private-upload.wav")
+
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FakeUpload(),
+        write=lambda *args, **kwargs: None,
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(
+        load_model=lambda name: loaded.append(name) or FakeModel()
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+    monkeypatch.setattr(app.tempfile, "NamedTemporaryFile", FailingTempFile)
+
+    app.main()
+
+    assert errors == ["Uploaded audio file could not be saved."]
+    assert loaded == []
+    assert created_paths
+    assert not os.path.exists(created_paths[0])
     assert "private-upload" not in errors[0]
 
 
@@ -299,6 +349,38 @@ def test_write_uploaded_file_rejects_upload_read_errors(monkeypatch):
 
     with pytest.raises(app.UploadValidationError, match="could not be read"):
         app.write_uploaded_file(FailingReaderUpload())
+
+
+def test_write_uploaded_file_cleans_up_after_write_error(monkeypatch):
+    app = import_app(monkeypatch)
+    created_paths = []
+    original_named_temporary_file = app.tempfile.NamedTemporaryFile
+
+    class FailingTempFile:
+        def __init__(self, *args, **kwargs):
+            self.file = original_named_temporary_file(
+                delete=False,
+                suffix=kwargs.get("suffix", ""),
+            )
+            self.name = self.file.name
+            created_paths.append(self.name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.file.close()
+
+        def write(self, data):
+            raise OSError("disk full at /tmp/private-upload.wav")
+
+    monkeypatch.setattr(app.tempfile, "NamedTemporaryFile", FailingTempFile)
+
+    with pytest.raises(app.UploadValidationError, match="could not be saved"):
+        app.write_uploaded_file(FakeUpload())
+
+    assert created_paths
+    assert not os.path.exists(created_paths[0])
 
 
 def test_write_uploaded_file_normalizes_bytearray_upload(monkeypatch):

@@ -10,6 +10,8 @@
 - Rejected non-byte upload payloads before temporary file writes.
 - Added upload validation coverage for unexpected non-byte `getvalue()`
   results.
+- Cleaned up temporary files after upload write failures and report a generic
+  user-facing save error.
 - Added transcript text validation for Whisper results before display.
 - Added tests for trimmed, missing, non-string, and blank transcript text.
 
