@@ -23,7 +23,7 @@ class FakeModel:
     def transcribe(self, path):
         self.seen_path = path
         assert os.path.exists(path)
-        return {"text": "hello world"}
+        return {"text": "  hello world\n"}
 
 
 class FailingModel:
@@ -146,6 +146,28 @@ def test_transcribe_uploaded_file_rejects_missing_text_result(monkeypatch):
 
     with pytest.raises(app.TranscriptionError, match="Transcription failed"):
         app.transcribe_uploaded_file(FakeUpload(), MissingTextModel())
+
+
+def test_transcribe_uploaded_file_rejects_non_string_text(monkeypatch):
+    app = import_app(monkeypatch)
+
+    class NonStringTextModel:
+        def transcribe(self, path):
+            return {"text": None}
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.transcribe_uploaded_file(FakeUpload(), NonStringTextModel())
+
+
+def test_transcribe_uploaded_file_rejects_blank_text(monkeypatch):
+    app = import_app(monkeypatch)
+
+    class BlankTextModel:
+        def transcribe(self, path):
+            return {"text": "   "}
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.transcribe_uploaded_file(FakeUpload(), BlankTextModel())
 
 
 def test_write_uploaded_file_normalizes_supported_suffix(monkeypatch):

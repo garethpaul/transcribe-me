@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-06-09
+
+- Added transcript text validation for Whisper results before display.
+- Added tests for trimmed, missing, non-string, and blank transcript text.
+
 ## 2026-06-08
 
 - Added generic transcription failure handling with temp-file cleanup tests and

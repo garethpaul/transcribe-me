@@ -19,6 +19,7 @@ Priority:
 - Normalize uploaded file suffixes before temp-file writes
 - Reject empty and oversized uploads before writing temporary files
 - Report transcription failures without leaking local exception details
+- Validate and trim model transcript text before display
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 
@@ -50,6 +51,7 @@ external model or service calls explicit.
 - Committed audio samples from real users
 - Silent upload of audio or transcripts
 - Persistent transcript storage without a privacy model
+- Displaying non-string or blank transcription results as successful output
 - Hidden telemetry
 
 This list is a roadmap guardrail, not a permanent rule.

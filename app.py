@@ -8,6 +8,7 @@ from pathlib import Path
 ALLOWED_AUDIO_SUFFIXES = {".m4a", ".mp3", ".mpeg", ".wav"}
 FALLBACK_AUDIO_SUFFIX = ".audio"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
 
 
 class UploadValidationError(ValueError):
@@ -47,6 +48,20 @@ def write_uploaded_file(uploaded_file):
         return tmp_file.name
 
 
+def normalized_transcript_text(result):
+    if not isinstance(result, dict):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+    text = result.get("text")
+    if not isinstance(text, str):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+    text = text.strip()
+    if not text:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    return text
+
+
 def transcribe_uploaded_file(uploaded_file, model=None):
     audio_path = write_uploaded_file(uploaded_file)
     try:
@@ -54,11 +69,11 @@ def transcribe_uploaded_file(uploaded_file, model=None):
             if model is None:
                 model = get_model()
             result = model.transcribe(audio_path)
-            return result["text"]
+            return normalized_transcript_text(result)
+        except TranscriptionError:
+            raise
         except Exception as error:
-            raise TranscriptionError(
-                "Transcription failed. Try a supported audio file."
-            ) from error
+            raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
     finally:
         if os.path.exists(audio_path):
             os.unlink(audio_path)
