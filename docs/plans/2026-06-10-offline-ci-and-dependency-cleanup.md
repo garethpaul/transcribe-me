@@ -18,6 +18,9 @@ services.
   using immutable action pins.
 - Download each direct runtime artifact in CI without installing Whisper's
   heavyweight transitive ML graph.
+- Audit pinned direct runtime packages without invoking pip dependency
+  resolution or installing the heavyweight ML graph, and support manual
+  workflow runs for maintenance verification.
 - Document the boundary between offline mocked tests and live Whisper runtime
   validation.
 

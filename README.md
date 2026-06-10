@@ -89,16 +89,20 @@ Available targets:
 - `make test` runs the dependency-free pytest suite with fake Streamlit and
   Whisper modules.
 - `make build` runs the static build gate.
+- `make audit` checks the pinned direct runtime dependencies without installing
+  or resolving the heavyweight Whisper and PyTorch dependency graph.
 - `make verify` combines lint, test, and build.
-- `make check` is the canonical local and CI command.
+- `make check` is the canonical local and CI command, including the
+  direct-runtime audit.
 
 The tests cover upload type and size limits, content signatures, filename and
 content mismatches, inferred suffixes, temp-file cleanup, missing ffmpeg,
 transcription failures, transcript validation, plain-text output, dependency
 metadata, Streamlit upload configuration, and CI contracts. GitHub Actions runs
-`make check` on Python 3.10 and 3.12 with read-only permissions and immutable
-action references. CI also downloads each pinned direct runtime artifact for
-both Python versions without installing the heavyweight ML dependency graph.
+`make check` on Python 3.10 and 3.12 with read-only permissions, immutable
+action references, and a manual trigger. CI also downloads each pinned direct
+runtime artifact for both Python versions without installing the heavyweight
+ML dependency graph.
 
 ## Repository Layout
 

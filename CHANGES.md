@@ -20,6 +20,8 @@
 - Added Ruff formatting/linting, least-privilege Python 3.10/3.12 CI, and
   repository contract tests.
 - Added CI resolution checks for each pinned direct runtime artifact.
+- Added a direct-runtime vulnerability audit and manual GitHub Actions trigger
+  without installing the heavyweight Whisper dependency graph.
 - Ignored local virtual environments, Ruff caches, environment files, and
   Streamlit secrets.
 

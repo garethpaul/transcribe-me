@@ -61,6 +61,14 @@ def main():
     if "maxUploadSize = 25" not in streamlit_config:
         failures.append("Streamlit must reject uploads above the app's 25 MB limit")
 
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    if "pip_audit --requirement requirements.txt --no-deps --disable-pip" not in makefile:
+        failures.append("make check must audit pinned direct runtime dependencies")
+
+    workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+    if "workflow_dispatch:" not in workflow:
+        failures.append("GitHub Actions must support manual verification runs")
+
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:
         failures.append("tests must cover temp-file cleanup after upload write errors")

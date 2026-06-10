@@ -17,7 +17,12 @@ def test_runtime_requirements_do_not_install_ffmpeg_python_wrapper():
 def test_test_requirements_are_pinned():
     requirements = (ROOT / "test-requirements.txt").read_text(encoding="utf-8").splitlines()
 
-    assert requirements == ["pytest==9.0.3", "ruff==0.15.16"]
+    assert requirements == [
+        "pip==26.1.2",
+        "pip-audit==2.10.0",
+        "pytest==9.0.3",
+        "ruff==0.15.16",
+    ]
 
 
 def test_streamlit_rejects_uploads_above_app_limit():
@@ -37,6 +42,7 @@ def test_ci_runs_complete_check_with_least_privilege():
     workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
     contracts = (
         "permissions:\n  contents: read",
+        "workflow_dispatch:",
         "timeout-minutes: 10",
         'python-version: ["3.10", "3.12"]',
         "fail-fast: false",
@@ -52,3 +58,9 @@ def test_ci_runs_complete_check_with_least_privilege():
     for contract in contracts:
         assert contract in workflow
     assert "@v" not in workflow
+
+
+def test_make_check_audits_pinned_direct_runtime_dependencies():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "pip_audit --requirement requirements.txt --no-deps --disable-pip" in makefile

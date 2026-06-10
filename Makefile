@@ -1,4 +1,4 @@
-.PHONY: build check format lint test verify
+.PHONY: audit build check format lint test verify
 
 PYTHON ?= python3
 
@@ -16,6 +16,9 @@ test:
 build:
 	$(PYTHON) -m py_compile app.py
 
+audit:
+	$(PYTHON) -m pip_audit --requirement requirements.txt --no-deps --disable-pip
+
 verify: format lint test build
 
-check: verify
+check: verify audit
