@@ -17,10 +17,14 @@ Priority:
 - Keep Whisper model choice visible
 - Treat uploaded audio as sensitive user-provided data
 - Normalize uploaded file suffixes before temp-file writes
-- Treat uploaded filenames as optional metadata with a safe suffix fallback
+- Treat uploaded filenames as optional metadata and derive suffixes from audio
+  content when metadata is unavailable
+- Reject unsupported audio headers and filename/content mismatches before
+  parser or model invocation
 - Reject unreadable, empty, oversized, and non-byte uploads before writing
   temporary files
-- Make upload limits visible before users select audio
+- Enforce upload limits at both Streamlit and application boundaries
+- Fail clearly when the required system ffmpeg executable is unavailable
 - Clean up temporary files when upload writes fail
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display
@@ -30,9 +34,9 @@ Priority:
 
 Next priorities:
 
-- Add README setup notes for Python, ffmpeg, and model download behavior
-- Add duration guidance for supported audio files
-- Add manual verification notes for common audio formats
+- Add an explicit processing-time or audio-duration bound
+- Add manual live-inference verification with synthetic audio
+- Review Streamlit and Whisper upgrades with real model smoke tests
 
 Contribution rules:
 
@@ -58,6 +62,7 @@ external model or service calls explicit.
 - Persistent transcript storage without a privacy model
 - Displaying non-string or blank transcription results as successful output
 - Upload filename handling that can bypass sanitized validation paths
+- Arbitrary upload bytes reaching ffmpeg solely because of filename metadata
 - Hidden telemetry
 
 This list is a roadmap guardrail, not a permanent rule.

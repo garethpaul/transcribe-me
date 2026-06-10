@@ -5,106 +5,150 @@
 
 ## Overview
 
-`garethpaul/transcribe-me` is a Python project. File upload transcription.
+`transcribe-me` is a small Streamlit application that transcribes uploaded audio
+with OpenAI Whisper's local `base` model. Uploaded bytes are validated, written
+to a temporary file only for transcription, rendered as plain text, and deleted
+on both success and failure.
 
-This README is based on the checked-in source, manifests, scripts, and repository metadata on the `main` branch. The project language mix found during review was: Python (1).
+The project is an educational local-processing demo rather than a hosted
+transcription service. It does not store transcripts or require an API key.
+Local `.env` files and `.streamlit/secrets.toml` are ignored to prevent future
+deployment credentials from being committed accidentally.
 
-## Repository Contents
+## Supported Environment
 
-- `requirements.txt` - Python dependency or packaging metadata
-- `app.py`
-- `CHANGES.md` - maintenance history for upload handling checks
-- `Makefile` - local verification entry points
-- `docs/plans` - completed maintenance plans for the current baseline
-- `plans` - historical implementation notes
-- `scripts` - documentation-plan validators
-- `SECURITY.md` - security reporting and disclosure guidance
-- `test-requirements.txt` - test dependency notes
-- `tests` - focused Streamlit/Whisper behavior tests
-- `VISION.md` - project direction and maintenance guardrails
+- Python 3.10 or 3.12
+- On Linux, a `glibc 2.28+` environment capable of installing current
+  manylinux wheels
+- The `ffmpeg` executable on `PATH`
+- Network access on first model use so Whisper can download the `base` weights
+- WAV, MP3, MPEG audio, or M4A uploads up to 25 MB
 
-Additional scan context:
+The first transcription is slower because Whisper downloads and caches model
+weights. Subsequent transcriptions reuse that local cache.
 
-- Source directories: no top-level source directories detected
-- Dependency and build manifests: Makefile, requirements.txt, test-requirements.txt
-- Entry points or build surfaces: app.py
-- Test-looking files: tests/test_app.py
+Runtime dependencies are pinned to Streamlit 1.58.0, PyArrow 23.0.1, and OpenAI
+Whisper 20250625. PyArrow 23.0.1 is the first release outside the affected
+CVE-2026-25087 range and also includes the CVE-2024-52338 fix. Its Linux wheels
+target modern manylinux (`glibc 2.28+`).
+The Streamlit and Whisper upgrades replace 2024/2023-era releases; the previous
+Whisper build metadata fails under the documented Python 3.12 setup.
 
-## Getting Started
-
-### Prerequisites
-
-- Git
-- Python 3
-
-### Setup
+## Setup
 
 ```bash
 git clone https://github.com/garethpaul/transcribe-me.git
 cd transcribe-me
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m pip install -r test-requirements.txt
 ```
 
-The setup commands above are derived from repository files. Legacy mobile, Python, or JavaScript samples may require older SDKs or package versions than a modern workstation uses by default.
+Install ffmpeg with your operating system package manager, then confirm it is
+available:
 
-## Running or Using the Project
+```bash
+ffmpeg -version
+```
 
-- Run `python -m streamlit run app.py` after installing Python dependencies.
-- The file uploader advertises the current 25 MB upload limit before
-  transcription starts.
+The similarly named Python `ffmpeg` package is not required by Whisper and is
+intentionally not installed.
+
+## Run
+
+```bash
+python -m streamlit run app.py
+```
+
+The app advertises and enforces a 25 MB upload limit. It checks common WAV,
+MP3/MPEG, and M4A header bytes before creating a temporary file. If filename
+metadata is absent or unusable, the temporary suffix is derived from content;
+if a supported filename extension conflicts with detected content, the upload
+is rejected.
 
 ## Testing and Verification
 
-- `make check` runs Python syntax checks and focused tests with fake
-  Streamlit/Whisper modules, including upload temp-file cleanup, suffix
-  handling, unreadable/empty/oversized/non-byte upload rejection, upload write
-  failure cleanup, and generic transcription failure reporting. Tests also
-  require transcript text to be string, non-blank, trimmed, and displayed as
-  plain text. Upload suffix tests require malformed or unreadable upload names
-  to use the safe `.audio` fallback. The UI tests also keep the uploader help
-  text aligned with the configured upload limit.
-- `make check` also requires completed canonical plans under `docs/plans`.
+Install the pinned test dependencies:
 
-When the required SDK or runtime is unavailable, use static checks and source review first, then verify on a machine that has the matching platform toolchain.
+```bash
+python -m pip install -r test-requirements.txt
+```
 
-## Configuration and Secrets
+Run the complete gate:
 
-- The app uses the local Whisper package and does not require an API key by
-  default. First-run model downloads and any future external transcription
-  service credentials should be made explicit and kept out of git.
+```bash
+make check
+```
 
-## Security and Privacy Notes
+Available targets:
 
-- Review changes touching external API calls or credential-adjacent configuration; examples from the scan include requirements.txt.
-- Review changes touching file, media, JSON, XML, CSV, OCR, or data parsing; examples from the scan include app.py.
-- Review changes touching database, model, or persistence code; examples from the scan include app.py.
+- `make format` verifies Ruff formatting.
+- `make lint` runs Ruff, compiles application, test, and checker modules, and
+  validates the completed maintenance plans.
+- `make test` runs the dependency-free pytest suite with fake Streamlit and
+  Whisper modules.
+- `make build` runs the static build gate.
+- `make verify` combines lint, test, and build.
+- `make check` is the canonical local and CI command.
+
+The tests cover upload type and size limits, content signatures, filename and
+content mismatches, inferred suffixes, temp-file cleanup, missing ffmpeg,
+transcription failures, transcript validation, plain-text output, dependency
+metadata, Streamlit upload configuration, and CI contracts. GitHub Actions runs
+`make check` on Python 3.10 and 3.12 with read-only permissions and immutable
+action references. CI also downloads each pinned direct runtime artifact for
+both Python versions without installing the heavyweight ML dependency graph.
+
+## Repository Layout
+
+- `app.py` — Streamlit UI, upload validation, temporary-file handling, and
+  Whisper transcription
+- `.streamlit/config.toml` — server-side upload limit
+- `.github/workflows/check.yml` — hosted verification
+- `requirements.txt` — pinned runtime dependencies
+- `test-requirements.txt` — pinned test dependency
+- `tests/` — focused behavior and repository-contract tests
+- `scripts/check_docs_plans.py` — maintenance-plan and safety-contract checker
+- `docs/plans/` — completed engineering plans
+- `SECURITY.md` — private vulnerability reporting guidance
+- `VISION.md` — project direction and contribution guardrails
+
+## Privacy and Security
+
+Audio is sensitive user-provided data. The app does not intentionally send
+uploads or transcripts to an external service, but a remotely deployed
+Streamlit server still receives the upload. Temporary files are deleted after
+transcription and after handled failures; do not treat this demo as a
+high-assurance confidential-audio system without reviewing the host, filesystem,
+logs, model cache, and process isolation.
+
+Header checks are a bounded defense-in-depth filter, not a proof that an entire
+media file is well formed. ffmpeg and Whisper remain the authoritative parsers.
+Do not commit real user audio or transcripts.
+
+## Known Limitations
+
+- Live Whisper inference is not exercised in CI because it requires ffmpeg,
+  model weights, significant compute, and a real audio fixture.
+- The 25 MB byte limit does not impose an audio-duration or processing-time
+  limit; highly compressed recordings can take substantial time and CPU.
+- Format detection checks common leading bytes and cannot eliminate malicious
+  media-parser risk.
+- There is no authentication, multi-user isolation, persistence model, job
+  queue, cancellation control, or production deployment configuration.
 
 ## Maintenance Notes
 
-- See `SECURITY.md` for vulnerability reporting and safe research guidance.
-- See `VISION.md` for project direction and contribution guardrails.
-- See `docs/plans/2026-06-08-transcribe-me-baseline.md` for the canonical
-  upload and temporary-file handling baseline.
-- See `docs/plans/2026-06-08-upload-size-validation.md` for upload content and
-  size validation coverage.
-- See `docs/plans/2026-06-08-transcription-error-handling.md` for generic
-  transcription failure handling and cleanup coverage.
-- See `docs/plans/2026-06-09-transcript-text-validation.md` for transcript text
-  validation coverage.
-- See `docs/plans/2026-06-09-upload-bytes-validation.md` for upload payload
-  type validation coverage.
-- See `docs/plans/2026-06-09-upload-read-validation.md` for unreadable upload
-  validation coverage.
-- See `docs/plans/2026-06-09-upload-write-cleanup.md` for upload write failure
-  cleanup coverage.
-- See `docs/plans/2026-06-09-plain-text-transcript-output.md` for transcript
-  rendering coverage.
-- See `docs/plans/2026-06-09-upload-limit-help.md` for upload limit help text
-  coverage.
-- See `docs/plans/2026-06-09-upload-name-fallback.md` for upload filename
-  fallback coverage.
+- See `docs/plans/2026-06-08-transcribe-me-baseline.md` for the canonical upload
+  and temporary-file baseline.
+- See `docs/plans/2026-06-10-audio-signature-and-ci.md` for content validation,
+  ffmpeg dependency correction, request limits, and hosted verification.
+- See `CHANGES.md` for the maintenance history.
 
 ## Contributing
 
-Keep changes small and tied to the project that is already present in this repository. For code changes, document the toolchain used, avoid committing generated dependency directories or local configuration, and update this README when setup or verification steps change.
+Keep changes focused on upload handling, transcription behavior, dependencies,
+errors, or documentation. Add tests for behavior changes, run `make check`, keep
+processing local by default, and never commit user recordings, transcripts,
+credentials, or model artifacts.

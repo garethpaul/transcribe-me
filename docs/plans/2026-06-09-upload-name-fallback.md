@@ -11,13 +11,15 @@ fail before the app reached its sanitized upload validation path.
 ## Objectives
 
 - Treat uploaded filenames as optional metadata.
-- Fall back to the existing `.audio` suffix when filename inspection fails.
+- Fall back safely when filename inspection fails.
 - Keep upload bytes validation and temp-file cleanup unchanged.
 - Add regression and static coverage for the fallback behavior.
 
 ## Work Completed
 
-- Wrapped upload suffix detection in a defensive exception boundary.
+- Wrapped upload suffix detection in a defensive exception boundary. The later
+  audio-signature plan supersedes the generic `.audio` suffix with a
+  content-derived supported suffix.
 - Added a no-model regression test for uploads whose `name` property raises.
 - Extended `scripts/check_docs_plans.py` to require the fallback guard and test.
 - Updated README, VISION, and CHANGES.

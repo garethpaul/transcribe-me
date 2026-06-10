@@ -9,6 +9,7 @@ CANONICAL_PLAN = DOCS_PLANS / "2026-06-08-transcribe-me-baseline.md"
 UPLOAD_WRITE_PLAN = DOCS_PLANS / "2026-06-09-upload-write-cleanup.md"
 UPLOAD_LIMIT_HINT_PLAN = DOCS_PLANS / "2026-06-09-upload-limit-help.md"
 UPLOAD_NAME_PLAN = DOCS_PLANS / "2026-06-09-upload-name-fallback.md"
+AUDIO_SIGNATURE_PLAN = DOCS_PLANS / "2026-06-10-audio-signature-and-ci.md"
 
 
 def main():
@@ -23,6 +24,8 @@ def main():
         failures.append("docs/plans/2026-06-09-upload-limit-help.md is missing")
     if not UPLOAD_NAME_PLAN.exists():
         failures.append("docs/plans/2026-06-09-upload-name-fallback.md is missing")
+    if not AUDIO_SIGNATURE_PLAN.exists():
+        failures.append("docs/plans/2026-06-10-audio-signature-and-ci.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -31,7 +34,9 @@ def main():
     for plan_path in plans:
         plan = plan_path.read_text(encoding="utf-8")
         if "Status: Completed" not in plan or "make check" not in plan:
-            failures.append(f"{plan_path.relative_to(ROOT)} must record completed status and make check verification")
+            failures.append(
+                f"{plan_path.relative_to(ROOT)} must record completed status and make check verification"
+            )
 
     app_source = (ROOT / "app.py").read_text(encoding="utf-8")
     if "st.text(transcript)" not in app_source:
@@ -43,11 +48,18 @@ def main():
         failures.append("app.py must clean up temp files after upload write failures")
     if "UPLOAD_HELP_TEXT" not in app_source or "help=UPLOAD_HELP_TEXT" not in app_source:
         failures.append("app.py must show the upload byte limit in the file uploader help")
-    suffix_section = app_source.split(
-        "def uploaded_audio_suffix(uploaded_file):", 1
-    )[-1].split("def uploaded_audio_bytes(uploaded_file):", 1)[0]
-    if "except Exception:" not in suffix_section or "return FALLBACK_AUDIO_SUFFIX" not in suffix_section:
-        failures.append("app.py must fall back to the safe audio suffix when upload names fail")
+    for contract in (
+        "def detected_audio_suffix(data):",
+        "def validated_audio_suffix(uploaded_file, data):",
+        "def ensure_ffmpeg_available():",
+        "data, suffix = validated_uploaded_audio(uploaded_file)",
+    ):
+        if contract not in app_source:
+            failures.append(f"app.py must keep audio validation contract: {contract}")
+
+    streamlit_config = (ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8")
+    if "maxUploadSize = 25" not in streamlit_config:
+        failures.append("Streamlit must reject uploads above the app's 25 MB limit")
 
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:
@@ -56,8 +68,12 @@ def main():
         failures.append("tests must cover user-facing upload write errors")
     if "test_main_file_uploader_documents_upload_limit" not in tests_source:
         failures.append("tests must cover upload limit help text")
-    if "test_write_uploaded_file_uses_fallback_when_name_fails" not in tests_source:
-        failures.append("tests must cover upload name fallback failures")
+    if "test_write_uploaded_file_infers_suffix_when_name_fails" not in tests_source:
+        failures.append("tests must cover content-derived suffixes when upload names fail")
+    if "test_write_uploaded_file_rejects_extension_mismatch" not in tests_source:
+        failures.append("tests must cover filename and content mismatches")
+    if "test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model" not in tests_source:
+        failures.append("tests must cover missing ffmpeg before model loading")
 
     if failures:
         print("Documentation plan checks failed:", file=sys.stderr)

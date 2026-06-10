@@ -8,8 +8,14 @@ import types
 import pytest
 
 
+WAV_BYTES = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 16
+MP3_BYTES = b"ID3\x04\x00\x00\x00\x00\x00\x00audio"
+MPEG_BYTES = b"\xff\xfb\x90\x64audio"
+M4A_BYTES = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A isom"
+
+
 class FakeUpload:
-    def __init__(self, name="sample.wav", data=b"audio-bytes"):
+    def __init__(self, name="sample.wav", data=WAV_BYTES):
         self.name = name
         self.data = data
 
@@ -27,7 +33,7 @@ class FailingReaderUpload(FakeUpload):
 
 
 class FailingNameUpload:
-    data = b"audio-bytes"
+    data = WAV_BYTES
 
     @property
     def name(self):
@@ -101,9 +107,7 @@ def test_main_rejects_invalid_upload_before_loading_model(monkeypatch):
         error=lambda message: errors.append(message),
         cache_resource=lambda fn: fn,
     )
-    fake_whisper = types.SimpleNamespace(
-        load_model=lambda name: loaded.append(name) or FakeModel()
-    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: loaded.append(name) or FakeModel())
     monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
     monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
     sys.modules.pop("app", None)
@@ -145,9 +149,7 @@ def test_main_rejects_unreadable_upload_before_loading_model(monkeypatch):
         error=lambda message: errors.append(message),
         cache_resource=lambda fn: fn,
     )
-    fake_whisper = types.SimpleNamespace(
-        load_model=lambda name: loaded.append(name) or FakeModel()
-    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: loaded.append(name) or FakeModel())
     monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
     monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
     sys.modules.pop("app", None)
@@ -158,6 +160,51 @@ def test_main_rejects_unreadable_upload_before_loading_model(monkeypatch):
     assert errors == ["Uploaded audio file could not be read."]
     assert loaded == []
     assert "private-upload" not in errors[0]
+
+
+def test_main_rejects_unsupported_audio_before_loading_model(monkeypatch):
+    errors = []
+    loaded = []
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FakeUpload(data=b"not-audio"),
+        write=lambda *args, **kwargs: None,
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: loaded.append(name) or FakeModel())
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+
+    app.main()
+
+    assert errors == ["Uploaded file content is not a supported audio format."]
+    assert loaded == []
+
+
+def test_main_reports_missing_ffmpeg_before_loading_model(monkeypatch):
+    errors = []
+    loaded = []
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FakeUpload(),
+        write=lambda *args, **kwargs: None,
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: loaded.append(name) or FakeModel())
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+    monkeypatch.setattr(app.shutil, "which", lambda command: None)
+
+    app.main()
+
+    assert errors == ["ffmpeg is required to transcribe audio."]
+    assert loaded == []
 
 
 def test_main_reports_upload_write_failure_without_raw_exception(monkeypatch):
@@ -191,13 +238,12 @@ def test_main_reports_upload_write_failure_without_raw_exception(monkeypatch):
         error=lambda message: errors.append(message),
         cache_resource=lambda fn: fn,
     )
-    fake_whisper = types.SimpleNamespace(
-        load_model=lambda name: loaded.append(name) or FakeModel()
-    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: loaded.append(name) or FakeModel())
     monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
     monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
     sys.modules.pop("app", None)
     app = importlib.import_module("app")
+    monkeypatch.setattr(app.shutil, "which", lambda command: "/usr/bin/ffmpeg")
     monkeypatch.setattr(app.tempfile, "NamedTemporaryFile", FailingTempFile)
 
     app.main()
@@ -223,6 +269,7 @@ def test_main_reports_transcription_failure_without_raw_exception(monkeypatch):
     monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
     sys.modules.pop("app", None)
     app = importlib.import_module("app")
+    monkeypatch.setattr(app.shutil, "which", lambda command: "/usr/bin/ffmpeg")
 
     app.main()
 
@@ -252,6 +299,7 @@ def test_main_renders_transcript_as_plain_text(monkeypatch):
     monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
     sys.modules.pop("app", None)
     app = importlib.import_module("app")
+    monkeypatch.setattr(app.shutil, "which", lambda command: "/usr/bin/ffmpeg")
 
     app.main()
 
@@ -321,46 +369,46 @@ def test_transcribe_uploaded_file_rejects_blank_text(monkeypatch):
 def test_write_uploaded_file_normalizes_supported_suffix(monkeypatch):
     app = import_app(monkeypatch)
 
-    path = app.write_uploaded_file(FakeUpload(name="VOICE.MP3"))
+    path = app.write_uploaded_file(FakeUpload(name="VOICE.MP3", data=MP3_BYTES))
     try:
         assert path.endswith(".mp3")
-        assert Path(path).read_bytes() == b"audio-bytes"
+        assert Path(path).read_bytes() == MP3_BYTES
     finally:
         if os.path.exists(path):
             os.unlink(path)
 
 
-def test_write_uploaded_file_uses_fallback_for_unsupported_suffix(monkeypatch):
+def test_write_uploaded_file_infers_suffix_for_unsupported_name(monkeypatch):
     app = import_app(monkeypatch)
 
     path = app.write_uploaded_file(FakeUpload(name="../../secret.exe"))
     try:
-        assert path.endswith(".audio")
-        assert Path(path).read_bytes() == b"audio-bytes"
+        assert path.endswith(".wav")
+        assert Path(path).read_bytes() == WAV_BYTES
     finally:
         if os.path.exists(path):
             os.unlink(path)
 
 
-def test_write_uploaded_file_uses_fallback_without_name(monkeypatch):
+def test_write_uploaded_file_infers_suffix_without_name(monkeypatch):
     app = import_app(monkeypatch)
 
     path = app.write_uploaded_file(FakeUpload(name=None))
     try:
-        assert path.endswith(".audio")
-        assert Path(path).read_bytes() == b"audio-bytes"
+        assert path.endswith(".wav")
+        assert Path(path).read_bytes() == WAV_BYTES
     finally:
         if os.path.exists(path):
             os.unlink(path)
 
 
-def test_write_uploaded_file_uses_fallback_when_name_fails(monkeypatch):
+def test_write_uploaded_file_infers_suffix_when_name_fails(monkeypatch):
     app = import_app(monkeypatch)
 
     path = app.write_uploaded_file(FailingNameUpload())
     try:
-        assert path.endswith(".audio")
-        assert Path(path).read_bytes() == b"audio-bytes"
+        assert path.endswith(".wav")
+        assert Path(path).read_bytes() == WAV_BYTES
     finally:
         if os.path.exists(path):
             os.unlink(path)
@@ -429,9 +477,9 @@ def test_write_uploaded_file_cleans_up_after_write_error(monkeypatch):
 def test_write_uploaded_file_normalizes_bytearray_upload(monkeypatch):
     app = import_app(monkeypatch)
 
-    path = app.write_uploaded_file(FakeUpload(data=bytearray(b"audio-bytes")))
+    path = app.write_uploaded_file(FakeUpload(data=bytearray(WAV_BYTES)))
     try:
-        assert Path(path).read_bytes() == b"audio-bytes"
+        assert Path(path).read_bytes() == WAV_BYTES
     finally:
         if os.path.exists(path):
             os.unlink(path)
@@ -443,3 +491,85 @@ def test_write_uploaded_file_rejects_oversized_upload(monkeypatch):
 
     with pytest.raises(app.UploadValidationError, match="too large"):
         app.write_uploaded_file(FakeUpload(data=b"audio"))
+
+
+@pytest.mark.parametrize(
+    ("name", "data", "expected_suffix"),
+    [
+        ("sample.wav", WAV_BYTES, ".wav"),
+        ("sample.mp3", MP3_BYTES, ".mp3"),
+        ("sample.mpeg", MPEG_BYTES, ".mpeg"),
+        ("sample.m4a", M4A_BYTES, ".m4a"),
+    ],
+)
+def test_write_uploaded_file_accepts_supported_audio_signatures(
+    monkeypatch, name, data, expected_suffix
+):
+    app = import_app(monkeypatch)
+
+    path = app.write_uploaded_file(FakeUpload(name=name, data=data))
+    try:
+        assert path.endswith(expected_suffix)
+        assert Path(path).read_bytes() == data
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_write_uploaded_file_rejects_unsupported_content_before_tempfile(monkeypatch):
+    app = import_app(monkeypatch)
+
+    with pytest.raises(app.UploadValidationError, match="not a supported audio format"):
+        app.write_uploaded_file(FakeUpload(name="payload.wav", data=b"not-audio"))
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"\\x00\\x00\\x00\\x18ftypBAD!payload",
+        b"ID3\\x01\\x00\\x00\\x00\\x00\\x00\\x00payload",
+        b"\\xff\\xe0\\x00\\x00payload",
+    ],
+)
+def test_write_uploaded_file_rejects_lookalike_audio_headers(monkeypatch, data):
+    app = import_app(monkeypatch)
+
+    with pytest.raises(app.UploadValidationError, match="not a supported audio format"):
+        app.write_uploaded_file(FakeUpload(name=None, data=data))
+
+
+def test_write_uploaded_file_rejects_extension_mismatch(monkeypatch):
+    app = import_app(monkeypatch)
+
+    with pytest.raises(app.UploadValidationError, match="does not match"):
+        app.write_uploaded_file(FakeUpload(name="payload.mp3", data=WAV_BYTES))
+
+
+def test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model(monkeypatch):
+    app = import_app(monkeypatch)
+    loaded = []
+    tempfiles = []
+    monkeypatch.setattr(app.shutil, "which", lambda command: None)
+    monkeypatch.setattr(app, "get_model", lambda: loaded.append("model"))
+    monkeypatch.setattr(
+        app.tempfile,
+        "NamedTemporaryFile",
+        lambda *args, **kwargs: tempfiles.append(kwargs) or None,
+    )
+
+    with pytest.raises(app.TranscriptionError, match="ffmpeg is required"):
+        app.transcribe_uploaded_file(FakeUpload())
+
+    assert loaded == []
+    assert tempfiles == []
+
+
+def test_transcribe_uploaded_file_rejects_content_before_loading_model(monkeypatch):
+    app = import_app(monkeypatch)
+    loaded = []
+    monkeypatch.setattr(app, "get_model", lambda: loaded.append("model"))
+
+    with pytest.raises(app.UploadValidationError, match="not a supported audio"):
+        app.transcribe_uploaded_file(FakeUpload(data=b"not-audio"))
+
+    assert loaded == []

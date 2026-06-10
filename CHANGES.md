@@ -1,9 +1,32 @@
 # Changes
 
+## 2026-06-10
+
+- Rejected unsupported audio content and filename/content mismatches before
+  model loading or temporary-file creation.
+- Derived safe WAV, MP3/MPEG, and M4A temporary suffixes from header bytes when
+  upload names are missing or unusable.
+- Detected missing system ffmpeg before writing user audio or loading Whisper.
+- Enforced the 25 MB limit at the Streamlit server boundary.
+- Removed the unrelated Python `ffmpeg` wrapper and pinned the test dependency.
+- Upgraded OpenAI Whisper from `20231117` to `20250625` so dependency resolution
+  works on Python 3.12.
+- Upgraded Streamlit from 1.33.0 to 1.58.0 after resolving its stable API surface
+  and Python 3.12 dependencies.
+- Pinned PyArrow 23.0.1, the first release fixing CVE-2026-25087 and also
+  containing the CVE-2024-52338 fix.
+- Upgraded pytest to 9.0.3 to fix CVE-2025-71176 tmpdir handling.
+- Upgraded Ruff from 0.6.9 to 0.15.16.
+- Added Ruff formatting/linting, least-privilege Python 3.10/3.12 CI, and
+  repository contract tests.
+- Added CI resolution checks for each pinned direct runtime artifact.
+- Ignored local virtual environments, Ruff caches, environment files, and
+  Streamlit secrets.
+
 ## 2026-06-09
 
-- Fell back to the safe `.audio` suffix when uploaded filename inspection fails,
-  with no-model regression coverage.
+- Added a safe filename-inspection fallback, later strengthened with
+  content-derived audio suffixes.
 - Added file-uploader help text that advertises the 25 MB upload limit before
   users choose an audio file.
 - Render successful transcripts as plain text and added no-network coverage for
