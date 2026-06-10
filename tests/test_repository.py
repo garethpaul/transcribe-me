@@ -43,11 +43,14 @@ def test_ci_runs_complete_check_with_least_privilege():
     contracts = (
         "permissions:\n  contents: read",
         "workflow_dispatch:",
+        "concurrency:",
+        "cancel-in-progress: true",
+        "runs-on: ubuntu-24.04",
         "timeout-minutes: 10",
         'python-version: ["3.10", "3.12"]',
         "fail-fast: false",
-        "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10",
-        "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405",
+        "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3",
+        "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
         "python -m pip install --requirement test-requirements.txt",
         "python -m pip download --no-deps",
         '--dest "${RUNNER_TEMP}/runtime-artifacts"',
@@ -63,4 +66,6 @@ def test_ci_runs_complete_check_with_least_privilege():
 def test_make_check_audits_pinned_direct_runtime_dependencies():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
 
-    assert "pip_audit --requirement requirements.txt --no-deps --disable-pip" in makefile
+    assert "ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))" in makefile
+    assert "env -u PYTHONPATH $(PYTHON) -m pip check" in makefile
+    assert 'pip_audit --requirement "$(ROOT)/requirements.txt" --no-deps --disable-pip' in makefile

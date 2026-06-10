@@ -1,8 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
 import importlib
 import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import types
 
 import pytest
@@ -331,6 +333,47 @@ def test_transcribe_uploaded_file_deletes_temp_file_after_failure(monkeypatch):
 
     assert model.seen_path is not None
     assert not os.path.exists(model.seen_path)
+
+
+def test_transcribe_uploaded_file_serializes_shared_model_calls(monkeypatch):
+    app = import_app(monkeypatch)
+
+    class ConcurrentModel:
+        def __init__(self):
+            self.calls = 0
+            self.first_entered = threading.Event()
+            self.release_first = threading.Event()
+            self.second_entered = threading.Event()
+
+        def transcribe(self, path):
+            self.calls += 1
+            if self.calls == 1:
+                self.first_entered.set()
+                assert self.release_first.wait(timeout=1)
+            else:
+                self.second_entered.set()
+            return {"text": "hello"}
+
+    model = ConcurrentModel()
+    second_started = threading.Event()
+
+    def transcribe_second_upload():
+        second_started.set()
+        return app.transcribe_uploaded_file(FakeUpload(), model)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(app.transcribe_uploaded_file, FakeUpload(), model)
+        assert model.first_entered.wait(timeout=1)
+        second = executor.submit(transcribe_second_upload)
+        try:
+            assert second_started.wait(timeout=1)
+            assert not model.second_entered.wait(timeout=0.2)
+        finally:
+            model.release_first.set()
+
+        assert first.result(timeout=1) == "hello"
+        assert second.result(timeout=1) == "hello"
+        assert model.second_entered.is_set()
 
 
 def test_transcribe_uploaded_file_rejects_missing_text_result(monkeypatch):

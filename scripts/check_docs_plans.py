@@ -10,6 +10,7 @@ UPLOAD_WRITE_PLAN = DOCS_PLANS / "2026-06-09-upload-write-cleanup.md"
 UPLOAD_LIMIT_HINT_PLAN = DOCS_PLANS / "2026-06-09-upload-limit-help.md"
 UPLOAD_NAME_PLAN = DOCS_PLANS / "2026-06-09-upload-name-fallback.md"
 AUDIO_SIGNATURE_PLAN = DOCS_PLANS / "2026-06-10-audio-signature-and-ci.md"
+CONCURRENCY_PLAN = DOCS_PLANS / "2026-06-10-transcription-concurrency.md"
 
 
 def main():
@@ -26,6 +27,8 @@ def main():
         failures.append("docs/plans/2026-06-09-upload-name-fallback.md is missing")
     if not AUDIO_SIGNATURE_PLAN.exists():
         failures.append("docs/plans/2026-06-10-audio-signature-and-ci.md is missing")
+    if not CONCURRENCY_PLAN.exists():
+        failures.append("docs/plans/2026-06-10-transcription-concurrency.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -53,6 +56,8 @@ def main():
         "def validated_audio_suffix(uploaded_file, data):",
         "def ensure_ffmpeg_available():",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
+        "TRANSCRIPTION_LOCK = threading.Lock()",
+        "with TRANSCRIPTION_LOCK:",
     ):
         if contract not in app_source:
             failures.append(f"app.py must keep audio validation contract: {contract}")
@@ -62,12 +67,26 @@ def main():
         failures.append("Streamlit must reject uploads above the app's 25 MB limit")
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    if "pip_audit --requirement requirements.txt --no-deps --disable-pip" not in makefile:
-        failures.append("make check must audit pinned direct runtime dependencies")
+    for contract in (
+        "ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))",
+        "env -u PYTHONPATH $(PYTHON) -m pip check",
+        'pip_audit --requirement "$(ROOT)/requirements.txt" --no-deps --disable-pip',
+    ):
+        if contract not in makefile:
+            failures.append(f"Makefile verification contract is missing: {contract}")
 
     workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
     if "workflow_dispatch:" not in workflow:
         failures.append("GitHub Actions must support manual verification runs")
+    for contract in (
+        "concurrency:",
+        "cancel-in-progress: true",
+        "runs-on: ubuntu-24.04",
+        "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3",
+        "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
+    ):
+        if contract not in workflow:
+            failures.append(f"GitHub Actions verification contract is missing: {contract}")
 
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:
@@ -82,6 +101,8 @@ def main():
         failures.append("tests must cover filename and content mismatches")
     if "test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model" not in tests_source:
         failures.append("tests must cover missing ffmpeg before model loading")
+    if "test_transcribe_uploaded_file_serializes_shared_model_calls" not in tests_source:
+        failures.append("tests must cover serialized access to the cached Whisper model")
 
     if failures:
         print("Documentation plan checks failed:", file=sys.stderr)

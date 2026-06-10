@@ -3,6 +3,7 @@ import whisper
 import tempfile
 import os
 import shutil
+import threading
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 UNSUPPORTED_AUDIO_MESSAGE = "Uploaded file content is not a supported audio format."
 MISMATCHED_AUDIO_MESSAGE = "Uploaded file content does not match its filename extension."
 FFMPEG_MISSING_MESSAGE = "ffmpeg is required to transcribe audio."
+TRANSCRIPTION_LOCK = threading.Lock()
 
 
 class UploadValidationError(ValueError):
@@ -152,7 +154,8 @@ def transcribe_uploaded_file(uploaded_file, model=None):
         try:
             if model is None:
                 model = get_model()
-            result = model.transcribe(audio_path)
+            with TRANSCRIPTION_LOCK:
+                result = model.transcribe(audio_path)
             return normalized_transcript_text(result)
         except TranscriptionError:
             raise
