@@ -11,6 +11,7 @@ UPLOAD_LIMIT_HINT_PLAN = DOCS_PLANS / "2026-06-09-upload-limit-help.md"
 UPLOAD_NAME_PLAN = DOCS_PLANS / "2026-06-09-upload-name-fallback.md"
 AUDIO_SIGNATURE_PLAN = DOCS_PLANS / "2026-06-10-audio-signature-and-ci.md"
 CONCURRENCY_PLAN = DOCS_PLANS / "2026-06-10-transcription-concurrency.md"
+CLEANUP_ERROR_PLAN = DOCS_PLANS / "2026-06-10-temp-cleanup-errors.md"
 
 
 def main():
@@ -29,6 +30,8 @@ def main():
         failures.append("docs/plans/2026-06-10-audio-signature-and-ci.md is missing")
     if not CONCURRENCY_PLAN.exists():
         failures.append("docs/plans/2026-06-10-transcription-concurrency.md is missing")
+    if not CLEANUP_ERROR_PLAN.exists():
+        failures.append("docs/plans/2026-06-10-temp-cleanup-errors.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -52,6 +55,7 @@ def main():
     if "UPLOAD_HELP_TEXT" not in app_source or "help=UPLOAD_HELP_TEXT" not in app_source:
         failures.append("app.py must show the upload byte limit in the file uploader help")
     for contract in (
+        "def remove_audio_file(audio_path, cleanup_error):",
         "def detected_audio_suffix(data):",
         "def validated_audio_suffix(uploaded_file, data):",
         "def ensure_ffmpeg_available():",
@@ -103,6 +107,10 @@ def main():
         failures.append("tests must cover missing ffmpeg before model loading")
     if "test_transcribe_uploaded_file_serializes_shared_model_calls" not in tests_source:
         failures.append("tests must cover serialized access to the cached Whisper model")
+    if "test_transcribe_uploaded_file_sanitizes_temp_cleanup_errors" not in tests_source:
+        failures.append("tests must cover sanitized transcription cleanup errors")
+    if "test_write_uploaded_file_sanitizes_cleanup_errors_after_write_failure" not in tests_source:
+        failures.append("tests must cover sanitized upload-write cleanup errors")
 
     if failures:
         print("Documentation plan checks failed:", file=sys.stderr)

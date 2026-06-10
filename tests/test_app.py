@@ -335,6 +335,27 @@ def test_transcribe_uploaded_file_deletes_temp_file_after_failure(monkeypatch):
     assert not os.path.exists(model.seen_path)
 
 
+def test_transcribe_uploaded_file_sanitizes_temp_cleanup_errors(monkeypatch):
+    app = import_app(monkeypatch)
+    model = FakeModel()
+    original_unlink = app.os.unlink
+
+    def fail_unlink(path):
+        raise OSError("permission denied for /tmp/private-upload.wav")
+
+    monkeypatch.setattr(app.os, "unlink", fail_unlink)
+
+    try:
+        with pytest.raises(app.TranscriptionError, match="Transcription failed") as exc_info:
+            app.transcribe_uploaded_file(FakeUpload(), model)
+
+        assert isinstance(exc_info.value.__cause__, OSError)
+        assert "private-upload" not in str(exc_info.value)
+    finally:
+        if model.seen_path and os.path.exists(model.seen_path):
+            original_unlink(model.seen_path)
+
+
 def test_transcribe_uploaded_file_serializes_shared_model_calls(monkeypatch):
     app = import_app(monkeypatch)
 
@@ -515,6 +536,49 @@ def test_write_uploaded_file_cleans_up_after_write_error(monkeypatch):
 
     assert created_paths
     assert not os.path.exists(created_paths[0])
+
+
+def test_write_uploaded_file_sanitizes_cleanup_errors_after_write_failure(monkeypatch):
+    app = import_app(monkeypatch)
+    created_paths = []
+    original_named_temporary_file = app.tempfile.NamedTemporaryFile
+    original_unlink = app.os.unlink
+
+    class FailingTempFile:
+        def __init__(self, *args, **kwargs):
+            self.file = original_named_temporary_file(
+                delete=False,
+                suffix=kwargs.get("suffix", ""),
+            )
+            self.name = self.file.name
+            created_paths.append(self.name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.file.close()
+
+        def write(self, data):
+            raise OSError("disk full at /tmp/private-upload.wav")
+
+    def fail_unlink(path):
+        raise OSError("permission denied for /tmp/private-upload.wav")
+
+    monkeypatch.setattr(app.tempfile, "NamedTemporaryFile", FailingTempFile)
+    monkeypatch.setattr(app.os, "unlink", fail_unlink)
+
+    try:
+        with pytest.raises(app.UploadValidationError, match="could not be saved") as exc_info:
+            app.write_uploaded_file(FakeUpload())
+
+        assert isinstance(exc_info.value.__cause__, OSError)
+        assert "private-upload" not in str(exc_info.value)
+        assert created_paths
+    finally:
+        for path in created_paths:
+            if os.path.exists(path):
+                original_unlink(path)
 
 
 def test_write_uploaded_file_normalizes_bytearray_upload(monkeypatch):

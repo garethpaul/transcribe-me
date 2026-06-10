@@ -2,6 +2,8 @@
 
 ## 2026-06-10
 
+- Sanitized temporary-file deletion failures so filesystem details cannot leak
+  after upload writes or transcription attempts.
 - Serialized calls to the process-wide cached Whisper model and added a
   deterministic two-thread regression test for concurrent Streamlit sessions.
 - Made Makefile targets independent of the caller's directory, added dependency

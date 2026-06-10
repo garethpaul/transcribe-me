@@ -26,6 +26,7 @@ Priority:
 - Enforce upload limits at both Streamlit and application boundaries
 - Fail clearly when the required system ffmpeg executable is unavailable
 - Clean up temporary files when upload writes fail
+- Keep temporary-file deletion failures behind user-safe error messages
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display
 - Display transcripts as plain text

@@ -113,6 +113,15 @@ def validated_uploaded_audio(uploaded_file):
     return data, suffix
 
 
+def remove_audio_file(audio_path, cleanup_error):
+    try:
+        os.unlink(audio_path)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise cleanup_error from error
+
+
 def write_audio_bytes(data, suffix):
     audio_path = None
     try:
@@ -121,8 +130,11 @@ def write_audio_bytes(data, suffix):
             tmp_file.write(data)
             return audio_path
     except Exception as error:
-        if audio_path and os.path.exists(audio_path):
-            os.unlink(audio_path)
+        if audio_path:
+            remove_audio_file(
+                audio_path,
+                UploadValidationError(UPLOAD_WRITE_FAILURE_MESSAGE),
+            )
         raise UploadValidationError(UPLOAD_WRITE_FAILURE_MESSAGE) from error
 
 
@@ -162,8 +174,10 @@ def transcribe_uploaded_file(uploaded_file, model=None):
         except Exception as error:
             raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
     finally:
-        if os.path.exists(audio_path):
-            os.unlink(audio_path)
+        remove_audio_file(
+            audio_path,
+            TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
+        )
 
 
 def main():

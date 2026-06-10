@@ -97,10 +97,10 @@ Available targets:
   direct-runtime audit.
 
 The tests cover upload type and size limits, content signatures, filename and
-content mismatches, inferred suffixes, temp-file cleanup, missing ffmpeg,
-serialized access to the cached Whisper model, transcription failures,
-transcript validation, plain-text output, dependency metadata, Streamlit upload
-configuration, and CI contracts. GitHub Actions runs `make check` on Python
+content mismatches, inferred suffixes, sanitized temp-file cleanup failures,
+missing ffmpeg, serialized access to the cached Whisper model, transcription
+failures, transcript validation, plain-text output, dependency metadata,
+Streamlit upload configuration, and CI contracts. GitHub Actions runs `make check` on Python
 3.10 and 3.12 with Ubuntu 24.04, read-only permissions, concurrency
 cancellation, immutable action references, and a manual trigger. CI also
 downloads each pinned direct runtime artifact for both Python versions without
