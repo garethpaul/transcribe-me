@@ -36,6 +36,9 @@
 - Added CI resolution checks for each pinned direct runtime artifact.
 - Added a direct-runtime vulnerability audit and manual GitHub Actions trigger
   without installing the heavyweight Whisper dependency graph.
+- Disabled persisted checkout credentials and made the repository contracts
+  reject duplicate workflows, unsafe triggers, write permissions, and duplicate
+  action steps.
 - Ignored local virtual environments, Ruff caches, environment files, and
   Streamlit secrets.
 

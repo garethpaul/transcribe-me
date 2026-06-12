@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 
@@ -86,6 +87,9 @@ def main():
             failures.append(f"Makefile verification contract is missing: {contract}")
 
     workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+    workflow_files = sorted((ROOT / ".github" / "workflows").glob("*"))
+    if workflow_files != [ROOT / ".github" / "workflows" / "check.yml"]:
+        failures.append("GitHub Actions must contain only the reviewed check workflow")
     if "workflow_dispatch:" not in workflow:
         failures.append("GitHub Actions must support manual verification runs")
     for contract in (
@@ -97,6 +101,18 @@ def main():
     ):
         if contract not in workflow:
             failures.append(f"GitHub Actions verification contract is missing: {contract}")
+    if workflow.count("uses: actions/checkout@") != 1:
+        failures.append("GitHub Actions must contain exactly one checkout step")
+    if workflow.count("uses: actions/setup-python@") != 1:
+        failures.append("GitHub Actions must contain exactly one Python setup step")
+    if workflow.count("permissions:") != 1 or "permissions:\n  contents: read" not in workflow:
+        failures.append("GitHub Actions must keep one top-level read-only permissions block")
+    if "persist-credentials: false" not in workflow:
+        failures.append("GitHub Actions checkout must not persist credentials")
+    if "pull_request_target:" in workflow or "permissions: write-all" in workflow:
+        failures.append("GitHub Actions must not use privileged triggers or write-all")
+    if re.search(r"^[ \t]+[A-Za-z0-9_-]+:[ \t]+write(?:[ \t]+#.*)?$", workflow, re.MULTILINE):
+        failures.append("GitHub Actions must not grant write permissions")
 
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:

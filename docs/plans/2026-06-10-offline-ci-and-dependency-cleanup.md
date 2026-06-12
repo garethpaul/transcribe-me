@@ -15,7 +15,7 @@ services.
 - Pin pytest and Ruff as verification dependencies.
 - Add formatting, lint, test, bytecode, and repository-contract gates.
 - Add a least-privilege GitHub Actions matrix for Python 3.10 and 3.12
-  using immutable action pins.
+  using immutable action pins without persisting checkout credentials.
 - Download each direct runtime artifact in CI without installing Whisper's
   heavyweight transitive ML graph.
 - Audit pinned direct runtime packages without invoking pip dependency
@@ -36,5 +36,6 @@ services.
 - `python -m ruff format --check .`
 - `python -m ruff check .`
 - Workflow YAML validation.
-- Negative workflow contract mutation.
+- Negative workflow mutations for extra workflows, unsafe triggers, write
+  permissions, credential persistence, and duplicate action steps.
 - Confirm no test performs network access or model loading.

@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,7 @@ def test_local_secrets_and_tool_caches_are_ignored():
 
 def test_ci_runs_complete_check_with_least_privilege():
     workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+    workflow_files = sorted((ROOT / ".github" / "workflows").glob("*"))
     contracts = (
         "permissions:\n  contents: read",
         "workflow_dispatch:",
@@ -50,6 +52,7 @@ def test_ci_runs_complete_check_with_least_privilege():
         'python-version: ["3.10", "3.12"]',
         "fail-fast: false",
         "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3",
+        "persist-credentials: false",
         "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
         "python -m pip install --requirement test-requirements.txt",
         "python -m pip download --no-deps",
@@ -60,6 +63,15 @@ def test_ci_runs_complete_check_with_least_privilege():
 
     for contract in contracts:
         assert contract in workflow
+    assert workflow_files == [ROOT / ".github" / "workflows" / "check.yml"]
+    assert workflow.count("uses: actions/checkout@") == 1
+    assert workflow.count("uses: actions/setup-python@") == 1
+    assert workflow.count("permissions:") == 1
+    assert "pull_request_target:" not in workflow
+    assert "permissions: write-all" not in workflow
+    assert not re.search(
+        r"^[ \t]+[A-Za-z0-9_-]+:[ \t]+write(?:[ \t]+#.*)?$", workflow, re.MULTILINE
+    )
     assert "@v" not in workflow
 
 

@@ -102,9 +102,11 @@ missing ffmpeg, serialized access to the cached Whisper model, transcription
 failures, transcript validation, plain-text output, dependency metadata,
 Streamlit upload configuration, and CI contracts. GitHub Actions runs `make check` on Python
 3.10 and 3.12 with Ubuntu 24.04, read-only permissions, concurrency
-cancellation, immutable action references, and a manual trigger. CI also
-downloads each pinned direct runtime artifact for both Python versions without
-installing the heavyweight ML dependency graph.
+cancellation, immutable action references, credential-free checkout, and a
+manual trigger. Repository contracts reject extra workflows, unsafe
+pull-request triggers, write permissions, and duplicate checkout or Python
+setup steps. CI also downloads each pinned direct runtime artifact for both
+Python versions without installing the heavyweight ML dependency graph.
 
 ## Repository Layout
 
