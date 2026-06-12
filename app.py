@@ -3,6 +3,7 @@ import whisper
 import tempfile
 import os
 import shutil
+import threading
 from pathlib import Path
 
 
@@ -12,11 +13,14 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_UPLOAD_MEGABYTES = MAX_UPLOAD_BYTES // (1024 * 1024)
 UPLOAD_HELP_TEXT = "Upload an audio file up to %d MB." % MAX_UPLOAD_MEGABYTES
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
+TRANSCRIPTION_BUSY_MESSAGE = "Transcription service is busy. Try again shortly."
+TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 UNSUPPORTED_AUDIO_MESSAGE = "Uploaded file content is not a supported audio format."
 MISMATCHED_AUDIO_MESSAGE = "Uploaded file content does not match its filename extension."
 FFMPEG_MISSING_MESSAGE = "ffmpeg is required to transcribe audio."
+TRANSCRIPTION_LOCK = threading.Lock()
 
 
 class UploadValidationError(ValueError):
@@ -111,6 +115,15 @@ def validated_uploaded_audio(uploaded_file):
     return data, suffix
 
 
+def remove_audio_file(audio_path, cleanup_error):
+    try:
+        os.unlink(audio_path)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise cleanup_error from error
+
+
 def write_audio_bytes(data, suffix):
     audio_path = None
     try:
@@ -119,8 +132,11 @@ def write_audio_bytes(data, suffix):
             tmp_file.write(data)
             return audio_path
     except Exception as error:
-        if audio_path and os.path.exists(audio_path):
-            os.unlink(audio_path)
+        if audio_path:
+            remove_audio_file(
+                audio_path,
+                UploadValidationError(UPLOAD_WRITE_FAILURE_MESSAGE),
+            )
         raise UploadValidationError(UPLOAD_WRITE_FAILURE_MESSAGE) from error
 
 
@@ -143,6 +159,16 @@ def normalized_transcript_text(result):
     return text
 
 
+def transcribe_with_lock(model, audio_path):
+    acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
+    if not acquired:
+        raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
+    try:
+        return model.transcribe(audio_path)
+    finally:
+        TRANSCRIPTION_LOCK.release()
+
+
 def transcribe_uploaded_file(uploaded_file, model=None):
     data, suffix = validated_uploaded_audio(uploaded_file)
     if model is None:
@@ -152,15 +178,17 @@ def transcribe_uploaded_file(uploaded_file, model=None):
         try:
             if model is None:
                 model = get_model()
-            result = model.transcribe(audio_path)
+            result = transcribe_with_lock(model, audio_path)
             return normalized_transcript_text(result)
         except TranscriptionError:
             raise
         except Exception as error:
             raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
     finally:
-        if os.path.exists(audio_path):
-            os.unlink(audio_path)
+        remove_audio_file(
+            audio_path,
+            TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
+        )
 
 
 def main():

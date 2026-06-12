@@ -26,15 +26,19 @@ Priority:
 - Enforce upload limits at both Streamlit and application boundaries
 - Fail clearly when the required system ffmpeg executable is unavailable
 - Clean up temporary files when upload writes fail
+- Keep temporary-file deletion failures behind user-safe error messages
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display
 - Display transcripts as plain text
+- Serialize inference against the process-wide cached Whisper model
+- Bound waits for the shared model lock and clean up timed-out uploads
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 
 Next priorities:
 
 - Add an explicit processing-time or audio-duration bound
+- Add a bounded job queue with user-visible waiting and cancellation state
 - Add manual live-inference verification with synthetic audio
 - Review Streamlit and Whisper upgrades with real model smoke tests
 

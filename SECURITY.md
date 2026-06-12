@@ -37,6 +37,13 @@ For web services, APIs, sockets, or scraping workflows, prioritize reports invol
 Upload write failures should clean up any temporary file path they created and
 surface a generic user-facing save error without local path details.
 
+The Streamlit process shares one cached Whisper model across sessions.
+Transcription calls are serialized to avoid concurrent access to shared model
+resources; this lock is a reliability guard, not authentication, rate limiting,
+or a production workload queue. Lock acquisition is bounded to 30 seconds, and
+timed-out requests remove their temporary audio before returning a generic busy
+message.
+
 ## Dependency and Supply Chain Security
 
 Dependency updates should come from trusted package managers and should keep lockfiles in sync when lockfiles exist. Do not commit credentials, private keys, tokens, generated secrets, or machine-local configuration. If a vulnerability depends on a compromised package, typosquatting risk, insecure transitive dependency, or unsafe build step, include the package name, affected version, and the path through which it is used.

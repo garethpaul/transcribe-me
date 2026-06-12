@@ -90,19 +90,21 @@ Available targets:
   Whisper modules.
 - `make build` runs the static build gate.
 - `make audit` checks the pinned direct runtime dependencies without installing
-  or resolving the heavyweight Whisper and PyTorch dependency graph.
+  or resolving the heavyweight Whisper and PyTorch dependency graph, and checks
+  the installed verification environment for dependency conflicts.
 - `make verify` combines lint, test, and build.
 - `make check` is the canonical local and CI command, including the
   direct-runtime audit.
 
 The tests cover upload type and size limits, content signatures, filename and
-content mismatches, inferred suffixes, temp-file cleanup, missing ffmpeg,
-transcription failures, transcript validation, plain-text output, dependency
-metadata, Streamlit upload configuration, and CI contracts. GitHub Actions runs
-`make check` on Python 3.10 and 3.12 with read-only permissions, immutable
-action references, and a manual trigger. CI also downloads each pinned direct
-runtime artifact for both Python versions without installing the heavyweight
-ML dependency graph.
+content mismatches, inferred suffixes, sanitized temp-file cleanup failures,
+missing ffmpeg, serialized access to the cached Whisper model, transcription
+failures, transcript validation, plain-text output, dependency metadata,
+Streamlit upload configuration, and CI contracts. GitHub Actions runs `make check` on Python
+3.10 and 3.12 with Ubuntu 24.04, read-only permissions, concurrency
+cancellation, immutable action references, and a manual trigger. CI also
+downloads each pinned direct runtime artifact for both Python versions without
+installing the heavyweight ML dependency graph.
 
 ## Repository Layout
 
@@ -127,6 +129,13 @@ transcription and after handled failures; do not treat this demo as a
 high-assurance confidential-audio system without reviewing the host, filesystem,
 logs, model cache, and process isolation.
 
+Streamlit caches one Whisper model per process. Transcription calls are
+serialized through a process-local lock so concurrent sessions cannot invoke
+the shared model at the same time. This protects shared model resources but is
+not a production job queue or per-user isolation boundary. Sessions wait at
+most 30 seconds for that lock; a contended request then returns a stable busy
+message and deletes its temporary upload without invoking Whisper.
+
 Header checks are a bounded defense-in-depth filter, not a proof that an entire
 media file is well formed. ffmpeg and Whisper remain the authoritative parsers.
 Do not commit real user audio or transcripts.
@@ -141,6 +150,9 @@ Do not commit real user audio or transcripts.
   media-parser risk.
 - There is no authentication, multi-user isolation, persistence model, job
   queue, cancellation control, or production deployment configuration.
+- Concurrent sessions wait up to 30 seconds for the single process-local
+  transcription lock; this bounds queued request retention but does not stop a
+  model call that is already running.
 
 ## Maintenance Notes
 
@@ -148,6 +160,10 @@ Do not commit real user audio or transcripts.
   and temporary-file baseline.
 - See `docs/plans/2026-06-10-audio-signature-and-ci.md` for content validation,
   ffmpeg dependency correction, request limits, and hosted verification.
+- See `docs/plans/2026-06-10-transcription-concurrency.md` for serialized access
+  to the cached Whisper model.
+- See `docs/plans/2026-06-12-transcription-lock-timeout.md` for the bounded
+  shared-model wait and cleanup contract.
 - See `CHANGES.md` for the maintenance history.
 
 ## Contributing

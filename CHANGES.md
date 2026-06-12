@@ -1,7 +1,21 @@
 # Changes
 
+## 2026-06-12
+
+- Bounded waits for the process-wide Whisper inference lock so sessions fail
+  with a stable busy response instead of retaining temporary audio indefinitely.
+- Added deterministic coverage for timeout propagation, no model invocation on
+  contention, temporary-file cleanup, and lock release after model outcomes.
+
 ## 2026-06-10
 
+- Sanitized temporary-file deletion failures so filesystem details cannot leak
+  after upload writes or transcription attempts.
+- Serialized calls to the process-wide cached Whisper model and added a
+  deterministic two-thread regression test for concurrent Streamlit sessions.
+- Made Makefile targets independent of the caller's directory, added dependency
+  consistency checks, and fixed CI to Ubuntu 24.04 with concurrency
+  cancellation and version-labeled immutable actions.
 - Rejected unsupported audio content and filename/content mismatches before
   model loading or temporary-file creation.
 - Derived safe WAV, MP3/MPEG, and M4A temporary suffixes from header bytes when
