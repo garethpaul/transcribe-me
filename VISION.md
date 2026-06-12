@@ -31,7 +31,7 @@ Priority:
 - Validate and trim model transcript text before display
 - Display transcripts as plain text
 - Serialize inference against the process-wide cached Whisper model
-- Bound waits for the shared model lock and clean up timed-out uploads
+- Bound waits for the shared model lock before creating temporary audio
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 

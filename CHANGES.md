@@ -2,6 +2,8 @@
 
 ## 2026-06-12
 
+- Acquired the shared Whisper lock before writing temporary audio so contended
+  requests fail without accumulating sensitive files on disk.
 - Bounded waits for the process-wide Whisper inference lock so sessions fail
   with a stable busy response instead of retaining temporary audio indefinitely.
 - Added deterministic coverage for timeout propagation, no model invocation on

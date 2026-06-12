@@ -14,6 +14,7 @@ AUDIO_SIGNATURE_PLAN = DOCS_PLANS / "2026-06-10-audio-signature-and-ci.md"
 CONCURRENCY_PLAN = DOCS_PLANS / "2026-06-10-transcription-concurrency.md"
 CLEANUP_ERROR_PLAN = DOCS_PLANS / "2026-06-10-temp-cleanup-errors.md"
 LOCK_TIMEOUT_PLAN = DOCS_PLANS / "2026-06-12-transcription-lock-timeout.md"
+LOCK_BEFORE_TEMPFILE_PLAN = DOCS_PLANS / "2026-06-12-lock-before-tempfile.md"
 
 
 def main():
@@ -36,6 +37,8 @@ def main():
         failures.append("docs/plans/2026-06-10-temp-cleanup-errors.md is missing")
     if not LOCK_TIMEOUT_PLAN.exists():
         failures.append("docs/plans/2026-06-12-transcription-lock-timeout.md is missing")
+    if not LOCK_BEFORE_TEMPFILE_PLAN.exists():
+        failures.append("docs/plans/2026-06-12-lock-before-tempfile.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -66,8 +69,10 @@ def main():
         "data, suffix = validated_uploaded_audio(uploaded_file)",
         "TRANSCRIPTION_LOCK = threading.Lock()",
         "TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30",
-        "def transcribe_with_lock(model, audio_path):",
+        "def transcribe_with_lock(model, data, suffix):",
         "TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)",
+        "audio_path = write_audio_bytes(data, suffix)",
+        "if audio_path is not None:",
         "TRANSCRIPTION_LOCK.release()",
     ):
         if contract not in app_source:
@@ -129,8 +134,13 @@ def main():
         failures.append("tests must cover missing ffmpeg before model loading")
     if "test_transcribe_uploaded_file_serializes_shared_model_calls" not in tests_source:
         failures.append("tests must cover serialized access to the cached Whisper model")
-    if "test_transcribe_uploaded_file_bounds_lock_wait_and_cleans_up" not in tests_source:
-        failures.append("tests must cover bounded lock waiting and temp-file cleanup")
+    if (
+        "test_transcribe_uploaded_file_bounds_lock_wait_before_tempfile_creation"
+        not in tests_source
+    ):
+        failures.append("tests must cover bounded lock waiting before temp-file creation")
+    if "test_transcribe_uploaded_file_releases_lock_after_write_failure" not in tests_source:
+        failures.append("tests must cover lock release after temp-file write failure")
     if "test_transcribe_uploaded_file_releases_acquired_lock" not in tests_source:
         failures.append("tests must cover lock release after model calls")
     if "test_main_reports_busy_transcription_message" not in tests_source:

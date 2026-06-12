@@ -159,36 +159,38 @@ def normalized_transcript_text(result):
     return text
 
 
-def transcribe_with_lock(model, audio_path):
+def transcribe_with_lock(model, data, suffix):
     acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
     if not acquired:
         raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
+    audio_path = None
     try:
+        audio_path = write_audio_bytes(data, suffix)
+        if model is None:
+            model = get_model()
         return model.transcribe(audio_path)
     finally:
-        TRANSCRIPTION_LOCK.release()
+        try:
+            if audio_path is not None:
+                remove_audio_file(
+                    audio_path,
+                    TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
+                )
+        finally:
+            TRANSCRIPTION_LOCK.release()
 
 
 def transcribe_uploaded_file(uploaded_file, model=None):
     data, suffix = validated_uploaded_audio(uploaded_file)
     if model is None:
         ensure_ffmpeg_available()
-    audio_path = write_audio_bytes(data, suffix)
     try:
-        try:
-            if model is None:
-                model = get_model()
-            result = transcribe_with_lock(model, audio_path)
-            return normalized_transcript_text(result)
-        except TranscriptionError:
-            raise
-        except Exception as error:
-            raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
-    finally:
-        remove_audio_file(
-            audio_path,
-            TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
-        )
+        result = transcribe_with_lock(model, data, suffix)
+        return normalized_transcript_text(result)
+    except (UploadValidationError, TranscriptionError):
+        raise
+    except Exception as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
 
 
 def main():

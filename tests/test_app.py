@@ -422,11 +422,9 @@ def test_transcribe_uploaded_file_serializes_shared_model_calls(monkeypatch):
         assert model.second_entered.is_set()
 
 
-def test_transcribe_uploaded_file_bounds_lock_wait_and_cleans_up(monkeypatch):
+def test_transcribe_uploaded_file_bounds_lock_wait_before_tempfile_creation(monkeypatch):
     app = import_app(monkeypatch)
     model = FakeModel()
-    captured = {}
-    original_write_audio_bytes = app.write_audio_bytes
 
     class ContendedLock:
         def __init__(self):
@@ -442,13 +440,11 @@ def test_transcribe_uploaded_file_bounds_lock_wait_and_cleans_up(monkeypatch):
 
     lock = ContendedLock()
 
-    def capture_audio_path(data, suffix):
-        path = original_write_audio_bytes(data, suffix)
-        captured["path"] = path
-        return path
+    def reject_temp_write(data, suffix):
+        raise AssertionError("busy requests must not create temporary audio")
 
     monkeypatch.setattr(app, "TRANSCRIPTION_LOCK", lock)
-    monkeypatch.setattr(app, "write_audio_bytes", capture_audio_path)
+    monkeypatch.setattr(app, "write_audio_bytes", reject_temp_write)
 
     with pytest.raises(app.TranscriptionError, match="service is busy"):
         app.transcribe_uploaded_file(FakeUpload(), model)
@@ -456,7 +452,32 @@ def test_transcribe_uploaded_file_bounds_lock_wait_and_cleans_up(monkeypatch):
     assert lock.timeout == app.TRANSCRIPTION_LOCK_TIMEOUT_SECONDS
     assert lock.release_calls == 0
     assert model.seen_path is None
-    assert not os.path.exists(captured["path"])
+
+
+def test_transcribe_uploaded_file_releases_lock_after_write_failure(monkeypatch):
+    app = import_app(monkeypatch)
+
+    class AcquiredLock:
+        def __init__(self):
+            self.release_calls = 0
+
+        def acquire(self, timeout):
+            return True
+
+        def release(self):
+            self.release_calls += 1
+
+    def fail_write(data, suffix):
+        raise app.UploadValidationError(app.UPLOAD_WRITE_FAILURE_MESSAGE)
+
+    lock = AcquiredLock()
+    monkeypatch.setattr(app, "TRANSCRIPTION_LOCK", lock)
+    monkeypatch.setattr(app, "write_audio_bytes", fail_write)
+
+    with pytest.raises(app.UploadValidationError, match="could not be saved"):
+        app.transcribe_uploaded_file(FakeUpload(), FakeModel())
+
+    assert lock.release_calls == 1
 
 
 @pytest.mark.parametrize("model", [FakeModel(), FailingModel()])

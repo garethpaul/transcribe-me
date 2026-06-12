@@ -41,8 +41,8 @@ The Streamlit process shares one cached Whisper model across sessions.
 Transcription calls are serialized to avoid concurrent access to shared model
 resources; this lock is a reliability guard, not authentication, rate limiting,
 or a production workload queue. Lock acquisition is bounded to 30 seconds, and
-timed-out requests remove their temporary audio before returning a generic busy
-message.
+contended requests return a generic busy message before creating temporary
+audio.
 
 ## Dependency and Supply Chain Security
 

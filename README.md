@@ -136,7 +136,7 @@ serialized through a process-local lock so concurrent sessions cannot invoke
 the shared model at the same time. This protects shared model resources but is
 not a production job queue or per-user isolation boundary. Sessions wait at
 most 30 seconds for that lock; a contended request then returns a stable busy
-message and deletes its temporary upload without invoking Whisper.
+message without creating a temporary upload or invoking Whisper.
 
 Header checks are a bounded defense-in-depth filter, not a proof that an entire
 media file is well formed. ffmpeg and Whisper remain the authoritative parsers.
@@ -166,6 +166,8 @@ Do not commit real user audio or transcripts.
   to the cached Whisper model.
 - See `docs/plans/2026-06-12-transcription-lock-timeout.md` for the bounded
   shared-model wait and cleanup contract.
+- See `docs/plans/2026-06-12-lock-before-tempfile.md` for lock acquisition
+  before sensitive temporary audio is written.
 - See `CHANGES.md` for the maintenance history.
 
 ## Contributing
