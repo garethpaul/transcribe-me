@@ -276,6 +276,31 @@ def test_main_reports_transcription_failure_without_raw_exception(monkeypatch):
     app.main()
 
     assert errors == ["Transcription failed. Try a supported audio file."]
+
+
+def test_main_reports_busy_transcription_message(monkeypatch):
+    errors = []
+    fake_streamlit = types.SimpleNamespace(
+        title=lambda *args, **kwargs: None,
+        file_uploader=lambda *args, **kwargs: FakeUpload(),
+        write=lambda *args, **kwargs: None,
+        error=lambda message: errors.append(message),
+        cache_resource=lambda fn: fn,
+    )
+    fake_whisper = types.SimpleNamespace(load_model=lambda name: FakeModel())
+    monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
+    monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+
+    def report_busy(uploaded_file, model=None):
+        raise app.TranscriptionError(app.TRANSCRIPTION_BUSY_MESSAGE)
+
+    monkeypatch.setattr(app, "transcribe_uploaded_file", report_busy)
+
+    app.main()
+
+    assert errors == ["Transcription service is busy. Try again shortly."]
     assert "private-file" not in errors[0]
 
 
@@ -395,6 +420,69 @@ def test_transcribe_uploaded_file_serializes_shared_model_calls(monkeypatch):
         assert first.result(timeout=1) == "hello"
         assert second.result(timeout=1) == "hello"
         assert model.second_entered.is_set()
+
+
+def test_transcribe_uploaded_file_bounds_lock_wait_and_cleans_up(monkeypatch):
+    app = import_app(monkeypatch)
+    model = FakeModel()
+    captured = {}
+    original_write_audio_bytes = app.write_audio_bytes
+
+    class ContendedLock:
+        def __init__(self):
+            self.timeout = None
+            self.release_calls = 0
+
+        def acquire(self, timeout):
+            self.timeout = timeout
+            return False
+
+        def release(self):
+            self.release_calls += 1
+
+    lock = ContendedLock()
+
+    def capture_audio_path(data, suffix):
+        path = original_write_audio_bytes(data, suffix)
+        captured["path"] = path
+        return path
+
+    monkeypatch.setattr(app, "TRANSCRIPTION_LOCK", lock)
+    monkeypatch.setattr(app, "write_audio_bytes", capture_audio_path)
+
+    with pytest.raises(app.TranscriptionError, match="service is busy"):
+        app.transcribe_uploaded_file(FakeUpload(), model)
+
+    assert lock.timeout == app.TRANSCRIPTION_LOCK_TIMEOUT_SECONDS
+    assert lock.release_calls == 0
+    assert model.seen_path is None
+    assert not os.path.exists(captured["path"])
+
+
+@pytest.mark.parametrize("model", [FakeModel(), FailingModel()])
+def test_transcribe_uploaded_file_releases_acquired_lock(monkeypatch, model):
+    app = import_app(monkeypatch)
+
+    class AcquiredLock:
+        def __init__(self):
+            self.release_calls = 0
+
+        def acquire(self, timeout):
+            return True
+
+        def release(self):
+            self.release_calls += 1
+
+    lock = AcquiredLock()
+    monkeypatch.setattr(app, "TRANSCRIPTION_LOCK", lock)
+
+    if isinstance(model, FailingModel):
+        with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+            app.transcribe_uploaded_file(FakeUpload(), model)
+    else:
+        assert app.transcribe_uploaded_file(FakeUpload(), model) == "hello world"
+
+    assert lock.release_calls == 1
 
 
 def test_transcribe_uploaded_file_rejects_missing_text_result(monkeypatch):

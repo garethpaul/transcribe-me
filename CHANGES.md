@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-06-12
+
+- Bounded waits for the process-wide Whisper inference lock so sessions fail
+  with a stable busy response instead of retaining temporary audio indefinitely.
+- Added deterministic coverage for timeout propagation, no model invocation on
+  contention, temporary-file cleanup, and lock release after model outcomes.
+
 ## 2026-06-10
 
 - Sanitized temporary-file deletion failures so filesystem details cannot leak

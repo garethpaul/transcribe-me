@@ -13,6 +13,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_UPLOAD_MEGABYTES = MAX_UPLOAD_BYTES // (1024 * 1024)
 UPLOAD_HELP_TEXT = "Upload an audio file up to %d MB." % MAX_UPLOAD_MEGABYTES
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
+TRANSCRIPTION_BUSY_MESSAGE = "Transcription service is busy. Try again shortly."
+TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 UNSUPPORTED_AUDIO_MESSAGE = "Uploaded file content is not a supported audio format."
@@ -157,6 +159,16 @@ def normalized_transcript_text(result):
     return text
 
 
+def transcribe_with_lock(model, audio_path):
+    acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
+    if not acquired:
+        raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
+    try:
+        return model.transcribe(audio_path)
+    finally:
+        TRANSCRIPTION_LOCK.release()
+
+
 def transcribe_uploaded_file(uploaded_file, model=None):
     data, suffix = validated_uploaded_audio(uploaded_file)
     if model is None:
@@ -166,8 +178,7 @@ def transcribe_uploaded_file(uploaded_file, model=None):
         try:
             if model is None:
                 model = get_model()
-            with TRANSCRIPTION_LOCK:
-                result = model.transcribe(audio_path)
+            result = transcribe_with_lock(model, audio_path)
             return normalized_transcript_text(result)
         except TranscriptionError:
             raise
