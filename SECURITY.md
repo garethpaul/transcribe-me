@@ -34,6 +34,11 @@ Helpful reports include:
 
 For web services, APIs, sockets, or scraping workflows, prioritize reports involving authentication bypass, authorization errors, injection, server-side request forgery, unsafe deserialization, credential leakage, data exposure, or denial-of-service conditions. Use test accounts and minimal proof-of-concept traffic only.
 
+Uploaded bytes are bounded and checked against supported leading audio
+signatures and their declared RIFF, `ftyp`, or ID3 extent before temporary-file
+or model work begins. These checks are defense in depth rather than a
+replacement for ffmpeg's complete parsing.
+
 Upload write failures should clean up any temporary file path they created and
 surface a generic user-facing save error without local path details.
 

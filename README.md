@@ -62,7 +62,8 @@ python -m streamlit run app.py
 ```
 
 The app advertises and enforces a 25 MB upload limit. It checks common WAV,
-MP3/MPEG, and M4A header bytes before creating a temporary file. If filename
+MP3/MPEG, and M4A header bytes and their leading declared sizes before creating
+a temporary file. If filename
 metadata is absent or unusable, the temporary suffix is derived from content;
 if a supported filename extension conflicts with detected content, the upload
 is rejected.
@@ -138,8 +139,9 @@ not a production job queue or per-user isolation boundary. Sessions wait at
 most 30 seconds for that lock; a contended request then returns a stable busy
 message without creating a temporary upload or invoking Whisper.
 
-Header checks are a bounded defense-in-depth filter, not a proof that an entire
-media file is well formed. ffmpeg and Whisper remain the authoritative parsers.
+Header and declared-size checks are a bounded defense-in-depth filter, not a
+proof that an entire media file is well formed. ffmpeg and Whisper remain the
+authoritative parsers.
 Do not commit real user audio or transcripts.
 
 ## Known Limitations
@@ -162,6 +164,8 @@ Do not commit real user audio or transcripts.
   and temporary-file baseline.
 - See `docs/plans/2026-06-10-audio-signature-and-ci.md` for content validation,
   ffmpeg dependency correction, request limits, and hosted verification.
+- See `docs/plans/2026-06-13-truncated-audio-containers.md` for bounded RIFF,
+  `ftyp`, and ID3 declaration checks.
 - See `docs/plans/2026-06-10-transcription-concurrency.md` for serialized access
   to the cached Whisper model.
 - See `docs/plans/2026-06-12-transcription-lock-timeout.md` for the bounded

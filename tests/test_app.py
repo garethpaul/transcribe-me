@@ -10,9 +10,20 @@ import types
 import pytest
 
 
-WAV_BYTES = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 16
-MP3_BYTES = b"ID3\x04\x00\x00\x00\x00\x00\x00audio"
 MPEG_BYTES = b"\xff\xfb\x90\x64audio"
+WAV_BYTES = (
+    b"RIFF"
+    + (36).to_bytes(4, "little")
+    + b"WAVEfmt "
+    + (16).to_bytes(4, "little")
+    + b"\x01\x00\x01\x00\x40\x1f\x00\x00\x80\x3e\x00\x00\x02\x00\x10\x00"
+    + b"data\x00\x00\x00\x00"
+)
+MP3_BYTES = b"ID3\x04\x00\x00\x00\x00\x00\x00" + MPEG_BYTES
+PADDED_MP3_BYTES = b"ID3\x04\x00\x00\x00\x00\x00\x03pad" + MPEG_BYTES
+FOOTER_MP3_BYTES = (
+    b"ID3\x04\x00\x10\x00\x00\x00\x00" + b"3DI\x04\x00\x10\x00\x00\x00\x00" + MPEG_BYTES
+)
 M4A_BYTES = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A isom"
 
 
@@ -714,6 +725,8 @@ def test_write_uploaded_file_rejects_oversized_upload(monkeypatch):
     [
         ("sample.wav", WAV_BYTES, ".wav"),
         ("sample.mp3", MP3_BYTES, ".mp3"),
+        ("padded.mp3", PADDED_MP3_BYTES, ".mp3"),
+        ("footer.mp3", FOOTER_MP3_BYTES, ".mp3"),
         ("sample.mpeg", MPEG_BYTES, ".mpeg"),
         ("sample.m4a", M4A_BYTES, ".m4a"),
     ],
@@ -752,6 +765,33 @@ def test_write_uploaded_file_rejects_lookalike_audio_headers(monkeypatch, data):
 
     with pytest.raises(app.UploadValidationError, match="not a supported audio format"):
         app.write_uploaded_file(FakeUpload(name=None, data=data))
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        WAV_BYTES[:-1],
+        (12).to_bytes(4, "big") + M4A_BYTES[4:],
+        (len(M4A_BYTES) + 1).to_bytes(4, "big") + M4A_BYTES[4:],
+        b"ID3\x04\x00\x00\x00\x00\x00\x7f" + MPEG_BYTES,
+        b"ID3\x04\x00\x00\x00\x00\x00\x00audio",
+    ],
+)
+def test_write_uploaded_file_rejects_truncated_audio_declarations_before_tempfile(
+    monkeypatch, data
+):
+    app = import_app(monkeypatch)
+    writes = []
+    monkeypatch.setattr(
+        app,
+        "write_audio_bytes",
+        lambda *args: writes.append(args),
+    )
+
+    with pytest.raises(app.UploadValidationError, match="not a supported audio format"):
+        app.write_uploaded_file(FakeUpload(name=None, data=data))
+
+    assert writes == []
 
 
 def test_write_uploaded_file_rejects_extension_mismatch(monkeypatch):

@@ -15,6 +15,7 @@ CONCURRENCY_PLAN = DOCS_PLANS / "2026-06-10-transcription-concurrency.md"
 CLEANUP_ERROR_PLAN = DOCS_PLANS / "2026-06-10-temp-cleanup-errors.md"
 LOCK_TIMEOUT_PLAN = DOCS_PLANS / "2026-06-12-transcription-lock-timeout.md"
 LOCK_BEFORE_TEMPFILE_PLAN = DOCS_PLANS / "2026-06-12-lock-before-tempfile.md"
+TRUNCATED_AUDIO_PLAN = DOCS_PLANS / "2026-06-13-truncated-audio-containers.md"
 
 
 def main():
@@ -39,6 +40,8 @@ def main():
         failures.append("docs/plans/2026-06-12-transcription-lock-timeout.md is missing")
     if not LOCK_BEFORE_TEMPFILE_PLAN.exists():
         failures.append("docs/plans/2026-06-12-lock-before-tempfile.md is missing")
+    if not TRUNCATED_AUDIO_PLAN.exists():
+        failures.append("docs/plans/2026-06-13-truncated-audio-containers.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -64,6 +67,13 @@ def main():
     for contract in (
         "def remove_audio_file(audio_path, cleanup_error):",
         "def detected_audio_suffix(data):",
+        "def has_complete_riff_header(data):",
+        "riff_size + 8 <= len(data)",
+        "def has_complete_ftyp_box(data):",
+        "16 <= box_size <= len(data)",
+        "def id3_audio_offset(data):",
+        "audio_offset > len(data)",
+        "has_mp3_frame_header(data, audio_offset)",
         "def validated_audio_suffix(uploaded_file, data):",
         "def ensure_ffmpeg_available():",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
@@ -130,6 +140,11 @@ def main():
         failures.append("tests must cover content-derived suffixes when upload names fail")
     if "test_write_uploaded_file_rejects_extension_mismatch" not in tests_source:
         failures.append("tests must cover filename and content mismatches")
+    if (
+        "test_write_uploaded_file_rejects_truncated_audio_declarations_before_tempfile"
+        not in tests_source
+    ):
+        failures.append("tests must reject truncated audio declarations before tempfile writes")
     if "test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model" not in tests_source:
         failures.append("tests must cover missing ffmpeg before model loading")
     if "test_transcribe_uploaded_file_serializes_shared_model_calls" not in tests_source:

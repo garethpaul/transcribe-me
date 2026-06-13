@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-06-13
+
+- Rejected truncated RIFF, `ftyp`, and ID3 declarations before temporary-file
+  creation while preserving supported WAV, M4A, and MP3 uploads.
+
 ## 2026-06-12
 
 - Acquired the shared Whisper lock before writing temporary audio so contended

@@ -23,6 +23,7 @@ Priority:
   parser or model invocation
 - Reject unreadable, empty, oversized, and non-byte uploads before writing
   temporary files
+- Reject truncated leading audio-container declarations before temp writes
 - Enforce upload limits at both Streamlit and application boundaries
 - Fail clearly when the required system ffmpeg executable is unavailable
 - Clean up temporary files when upload writes fail

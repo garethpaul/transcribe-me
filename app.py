@@ -64,33 +64,64 @@ def uploaded_audio_bytes(uploaded_file):
     return data
 
 
-def detected_audio_suffix(data):
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WAVE":
-        return ".wav"
-    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in ALLOWED_M4A_BRANDS:
-        return ".m4a"
+def has_complete_riff_header(data):
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return False
+    riff_size = int.from_bytes(data[4:8], "little")
+    return riff_size >= 4 and riff_size + 8 <= len(data)
+
+
+def has_complete_ftyp_box(data):
+    if len(data) < 16 or data[4:8] != b"ftyp" or data[8:12] not in ALLOWED_M4A_BRANDS:
+        return False
+    box_size = int.from_bytes(data[:4], "big")
+    return box_size == 0 or 16 <= box_size <= len(data)
+
+
+def has_mp3_frame_header(data, offset=0):
+    if len(data) < offset + 4:
+        return False
+    frame_header = int.from_bytes(data[offset : offset + 4], "big")
+    has_sync = frame_header & 0xFFE00000 == 0xFFE00000
+    version = (frame_header >> 19) & 0x3
+    layer = (frame_header >> 17) & 0x3
+    bitrate = (frame_header >> 12) & 0xF
+    sample_rate = (frame_header >> 10) & 0x3
+    return (
+        has_sync
+        and version != 0x1
+        and layer != 0x0
+        and bitrate not in {0x0, 0xF}
+        and sample_rate != 0x3
+    )
+
+
+def id3_audio_offset(data):
     if (
-        len(data) >= 10
-        and data[:3] == b"ID3"
-        and data[3] in {2, 3, 4}
-        and all(byte < 0x80 for byte in data[6:10])
+        len(data) < 10
+        or data[:3] != b"ID3"
+        or data[3] not in {2, 3, 4}
+        or any(byte >= 0x80 for byte in data[6:10])
     ):
+        return None
+    tag_size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
+    footer_size = 10 if data[3] == 4 and data[5] & 0x10 else 0
+    audio_offset = 10 + tag_size + footer_size
+    if audio_offset > len(data):
+        return None
+    return audio_offset
+
+
+def detected_audio_suffix(data):
+    if has_complete_riff_header(data):
+        return ".wav"
+    if has_complete_ftyp_box(data):
+        return ".m4a"
+    audio_offset = id3_audio_offset(data)
+    if audio_offset is not None and has_mp3_frame_header(data, audio_offset):
         return ".mp3"
-    if len(data) >= 4:
-        frame_header = int.from_bytes(data[:4], "big")
-        has_sync = frame_header & 0xFFE00000 == 0xFFE00000
-        version = (frame_header >> 19) & 0x3
-        layer = (frame_header >> 17) & 0x3
-        bitrate = (frame_header >> 12) & 0xF
-        sample_rate = (frame_header >> 10) & 0x3
-        if (
-            has_sync
-            and version != 0x1
-            and layer != 0x0
-            and bitrate not in {0x0, 0xF}
-            and sample_rate != 0x3
-        ):
-            return ".mp3"
+    if has_mp3_frame_header(data):
+        return ".mp3"
     raise UploadValidationError(UNSUPPORTED_AUDIO_MESSAGE)
 
 
