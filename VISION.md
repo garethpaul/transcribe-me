@@ -26,6 +26,7 @@ Priority:
 - Reject truncated leading audio-container declarations before temp writes
 - Enforce upload limits at both Streamlit and application boundaries
 - Fail clearly when the required system ffmpeg executable is unavailable
+- Bound media probing and reject audio longer than 15 minutes before model work
 - Clean up temporary files when upload writes fail
 - Keep temporary-file deletion failures behind user-safe error messages
 - Report transcription failures without leaking local exception details
@@ -38,7 +39,7 @@ Priority:
 
 Next priorities:
 
-- Add an explicit processing-time or audio-duration bound
+- Add an explicit total processing-time bound for accepted model calls
 - Add a bounded job queue with user-visible waiting and cancellation state
 - Add manual live-inference verification with synthetic audio
 - Review Streamlit and Whisper upgrades with real model smoke tests

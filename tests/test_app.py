@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import importlib
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
@@ -76,7 +77,7 @@ class FailingModel:
         raise RuntimeError("ffmpeg failed at /tmp/private-file.wav")
 
 
-def import_app(monkeypatch):
+def import_app(monkeypatch, stub_probe=True):
     fake_streamlit = types.SimpleNamespace(
         title=lambda *args, **kwargs: None,
         file_uploader=lambda *args, **kwargs: None,
@@ -88,7 +89,11 @@ def import_app(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
     monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
     sys.modules.pop("app", None)
-    return importlib.import_module("app")
+    app = importlib.import_module("app")
+    if stub_probe:
+        monkeypatch.setattr(app, "ensure_ffprobe_available", lambda: "/usr/bin/ffprobe")
+        monkeypatch.setattr(app, "probe_audio_duration", lambda *args: 1.0)
+    return app
 
 
 def test_import_does_not_load_model(monkeypatch):
@@ -283,6 +288,7 @@ def test_main_reports_transcription_failure_without_raw_exception(monkeypatch):
     sys.modules.pop("app", None)
     app = importlib.import_module("app")
     monkeypatch.setattr(app.shutil, "which", lambda command: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(app, "probe_audio_duration", lambda *args: 1.0)
 
     app.main()
 
@@ -338,6 +344,7 @@ def test_main_renders_transcript_as_plain_text(monkeypatch):
     sys.modules.pop("app", None)
     app = importlib.import_module("app")
     monkeypatch.setattr(app.shutil, "which", lambda command: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(app, "probe_audio_duration", lambda *args: 1.0)
 
     app.main()
 
@@ -818,6 +825,148 @@ def test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model(monkeypatch
 
     assert loaded == []
     assert tempfiles == []
+
+
+def test_transcribe_uploaded_file_checks_ffprobe_before_tempfile(monkeypatch):
+    app = import_app(monkeypatch, stub_probe=False)
+    tempfiles = []
+    monkeypatch.setattr(app.shutil, "which", lambda command: None)
+    monkeypatch.setattr(
+        app.tempfile,
+        "NamedTemporaryFile",
+        lambda *args, **kwargs: tempfiles.append(kwargs) or None,
+    )
+
+    with pytest.raises(app.TranscriptionError, match="ffprobe is required"):
+        app.transcribe_uploaded_file(FakeUpload(), FakeModel())
+
+    assert tempfiles == []
+
+
+def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch):
+    app = import_app(monkeypatch, stub_probe=False)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, '{"format":{"duration":"12.5"}}', "")
+
+    monkeypatch.setattr(app.subprocess, "run", run)
+
+    assert app.probe_audio_duration("/tmp/audio.wav", "/tools/ffprobe") == 12.5
+    assert calls == [
+        (
+            [
+                "/tools/ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                "/tmp/audio.wav",
+            ],
+            {
+                "check": True,
+                "capture_output": True,
+                "text": True,
+                "timeout": 10,
+            },
+        )
+    ]
+    assert app.FFPROBE_TIMEOUT_SECONDS == 10
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "not-json",
+        "{}",
+        '{"format":{}}',
+        '{"format":{"duration":"nan"}}',
+        '{"format":{"duration":"inf"}}',
+        '{"format":{"duration":"0"}}',
+        '{"format":{"duration":"-1"}}',
+    ],
+)
+def test_probe_audio_duration_rejects_invalid_results(monkeypatch, stdout):
+    app = import_app(monkeypatch, stub_probe=False)
+    monkeypatch.setattr(
+        app.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout, ""),
+    )
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.probe_audio_duration("/tmp/private.wav", "/tools/ffprobe")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        subprocess.CalledProcessError(1, ["ffprobe"], stderr="private path"),
+        subprocess.TimeoutExpired(["ffprobe"], 10),
+        OSError("private path"),
+    ],
+)
+def test_probe_audio_duration_sanitizes_probe_failures(monkeypatch, error):
+    app = import_app(monkeypatch, stub_probe=False)
+
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(app.subprocess, "run", fail)
+
+    with pytest.raises(app.TranscriptionError, match="^Transcription failed") as raised:
+        app.probe_audio_duration("/tmp/private.wav", "/tools/ffprobe")
+
+    assert "private" not in str(raised.value)
+
+
+def test_probe_audio_duration_rejects_excessive_duration(monkeypatch):
+    app = import_app(monkeypatch, stub_probe=False)
+    assert app.MAX_AUDIO_DURATION_SECONDS == 15 * 60
+    duration = app.MAX_AUDIO_DURATION_SECONDS + 0.001
+    monkeypatch.setattr(
+        app.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0],
+            0,
+            '{"format":{"duration":"%s"}}' % duration,
+            "",
+        ),
+    )
+
+    with pytest.raises(app.TranscriptionError, match="longer than 15 minutes"):
+        app.probe_audio_duration("/tmp/private.wav", "/tools/ffprobe")
+
+
+def test_transcribe_uploaded_file_rejects_long_audio_before_model_load(monkeypatch):
+    app = import_app(monkeypatch)
+    loaded = []
+    removed = []
+    monkeypatch.setattr(
+        app,
+        "probe_audio_duration",
+        lambda *args: (_ for _ in ()).throw(app.TranscriptionError(app.AUDIO_TOO_LONG_MESSAGE)),
+    )
+    monkeypatch.setattr(app, "ensure_ffmpeg_available", lambda: None)
+    monkeypatch.setattr(app, "get_model", lambda: loaded.append("model"))
+    original_remove = app.remove_audio_file
+
+    def record_remove(path, error):
+        removed.append(path)
+        original_remove(path, error)
+
+    monkeypatch.setattr(app, "remove_audio_file", record_remove)
+
+    with pytest.raises(app.TranscriptionError, match="longer than 15 minutes"):
+        app.transcribe_uploaded_file(FakeUpload())
+
+    assert loaded == []
+    assert len(removed) == 1
+    assert not os.path.exists(removed[0])
 
 
 def test_transcribe_uploaded_file_rejects_content_before_loading_model(monkeypatch):

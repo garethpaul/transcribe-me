@@ -1,8 +1,11 @@
+import json
+import math
 import streamlit as st
 import whisper
 import tempfile
 import os
 import shutil
+import subprocess
 import threading
 from pathlib import Path
 
@@ -15,11 +18,15 @@ UPLOAD_HELP_TEXT = "Upload an audio file up to %d MB." % MAX_UPLOAD_MEGABYTES
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
 TRANSCRIPTION_BUSY_MESSAGE = "Transcription service is busy. Try again shortly."
 TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30
+FFPROBE_TIMEOUT_SECONDS = 10
+MAX_AUDIO_DURATION_SECONDS = 15 * 60
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 UNSUPPORTED_AUDIO_MESSAGE = "Uploaded file content is not a supported audio format."
 MISMATCHED_AUDIO_MESSAGE = "Uploaded file content does not match its filename extension."
 FFMPEG_MISSING_MESSAGE = "ffmpeg is required to transcribe audio."
+FFPROBE_MISSING_MESSAGE = "ffprobe is required to validate audio."
+AUDIO_TOO_LONG_MESSAGE = "Uploaded audio is longer than 15 minutes."
 TRANSCRIPTION_LOCK = threading.Lock()
 
 
@@ -140,6 +147,49 @@ def ensure_ffmpeg_available():
         raise TranscriptionError(FFMPEG_MISSING_MESSAGE)
 
 
+def ensure_ffprobe_available():
+    ffprobe_path = shutil.which("ffprobe")
+    if ffprobe_path is None:
+        raise TranscriptionError(FFPROBE_MISSING_MESSAGE)
+    return ffprobe_path
+
+
+def probe_audio_duration(audio_path, ffprobe_path):
+    try:
+        completed = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                audio_path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=FFPROBE_TIMEOUT_SECONDS,
+        )
+        duration = float(json.loads(completed.stdout)["format"]["duration"])
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        OSError,
+        subprocess.SubprocessError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+
+    if not math.isfinite(duration) or duration <= 0:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if duration > MAX_AUDIO_DURATION_SECONDS:
+        raise TranscriptionError(AUDIO_TOO_LONG_MESSAGE)
+    return duration
+
+
 def validated_uploaded_audio(uploaded_file):
     data = uploaded_audio_bytes(uploaded_file)
     suffix = validated_audio_suffix(uploaded_file, data)
@@ -190,13 +240,14 @@ def normalized_transcript_text(result):
     return text
 
 
-def transcribe_with_lock(model, data, suffix):
+def transcribe_with_lock(model, data, suffix, ffprobe_path):
     acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
     if not acquired:
         raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
     audio_path = None
     try:
         audio_path = write_audio_bytes(data, suffix)
+        probe_audio_duration(audio_path, ffprobe_path)
         if model is None:
             model = get_model()
         return model.transcribe(audio_path)
@@ -215,8 +266,9 @@ def transcribe_uploaded_file(uploaded_file, model=None):
     data, suffix = validated_uploaded_audio(uploaded_file)
     if model is None:
         ensure_ffmpeg_available()
+    ffprobe_path = ensure_ffprobe_available()
     try:
-        result = transcribe_with_lock(model, data, suffix)
+        result = transcribe_with_lock(model, data, suffix, ffprobe_path)
         return normalized_transcript_text(result)
     except (UploadValidationError, TranscriptionError):
         raise

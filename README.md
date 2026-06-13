@@ -20,7 +20,7 @@ deployment credentials from being committed accidentally.
 - Python 3.10 or 3.12
 - On Linux, a `glibc 2.28+` environment capable of installing current
   manylinux wheels
-- The `ffmpeg` executable on `PATH`
+- The `ffmpeg` and `ffprobe` executables on `PATH`
 - Network access on first model use so Whisper can download the `base` weights
 - WAV, MP3, MPEG audio, or M4A uploads up to 25 MB
 
@@ -45,11 +45,12 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Install ffmpeg with your operating system package manager, then confirm it is
-available:
+Install ffmpeg with your operating system package manager, then confirm its
+transcription and probing tools are available:
 
 ```bash
 ffmpeg -version
+ffprobe -version
 ```
 
 The similarly named Python `ffmpeg` package is not required by Whisper and is
@@ -66,7 +67,8 @@ MP3/MPEG, and M4A header bytes and their leading declared sizes before creating
 a temporary file. If filename
 metadata is absent or unusable, the temporary suffix is derived from content;
 if a supported filename extension conflicts with detected content, the upload
-is rejected.
+is rejected. Before Whisper loads, `ffprobe` gets at most 10 seconds to confirm
+a finite positive duration no longer than 15 minutes.
 
 ## Testing and Verification
 
@@ -99,8 +101,9 @@ Available targets:
 
 The tests cover upload type and size limits, content signatures, filename and
 content mismatches, inferred suffixes, sanitized temp-file cleanup failures,
-missing ffmpeg, serialized access to the cached Whisper model, transcription
-failures, transcript validation, plain-text output, dependency metadata,
+missing ffmpeg/ffprobe, bounded duration probing, serialized access to the
+cached Whisper model, transcription failures, transcript validation,
+plain-text output, dependency metadata,
 Streamlit upload configuration, and CI contracts. GitHub Actions runs `make check` on Python
 3.10 and 3.12 with Ubuntu 24.04, read-only permissions, concurrency
 cancellation, immutable action references, credential-free checkout, and a
@@ -141,15 +144,16 @@ message without creating a temporary upload or invoking Whisper.
 
 Header and declared-size checks are a bounded defense-in-depth filter, not a
 proof that an entire media file is well formed. ffmpeg and Whisper remain the
-authoritative parsers.
+authoritative parsers. The duration probe rejects invalid metadata and audio
+longer than 15 minutes before loading or invoking Whisper.
 Do not commit real user audio or transcripts.
 
 ## Known Limitations
 
 - Live Whisper inference is not exercised in CI because it requires ffmpeg,
   model weights, significant compute, and a real audio fixture.
-- The 25 MB byte limit does not impose an audio-duration or processing-time
-  limit; highly compressed recordings can take substantial time and CPU.
+- The 15-minute duration limit bounds accepted input length but does not stop a
+  model call that stalls or otherwise bound total processing time.
 - Format detection checks common leading bytes and cannot eliminate malicious
   media-parser risk.
 - There is no authentication, multi-user isolation, persistence model, job
@@ -166,6 +170,8 @@ Do not commit real user audio or transcripts.
   ffmpeg dependency correction, request limits, and hosted verification.
 - See `docs/plans/2026-06-13-truncated-audio-containers.md` for bounded RIFF,
   `ftyp`, and ID3 declaration checks.
+- See `docs/plans/2026-06-13-audio-duration-preflight.md` for the bounded
+  `ffprobe` and 15-minute input contract.
 - See `docs/plans/2026-06-10-transcription-concurrency.md` for serialized access
   to the cached Whisper model.
 - See `docs/plans/2026-06-12-transcription-lock-timeout.md` for the bounded

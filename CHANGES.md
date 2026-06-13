@@ -2,6 +2,8 @@
 
 ## 2026-06-13
 
+- Added a 10-second `ffprobe` preflight that rejects invalid duration metadata
+  and audio longer than 15 minutes before Whisper loads or transcribes.
 - Rejected truncated RIFF, `ftyp`, and ID3 declarations before temporary-file
   creation while preserving supported WAV, M4A, and MP3 uploads.
 

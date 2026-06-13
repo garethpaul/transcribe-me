@@ -76,17 +76,26 @@ def main():
         "has_mp3_frame_header(data, audio_offset)",
         "def validated_audio_suffix(uploaded_file, data):",
         "def ensure_ffmpeg_available():",
+        "def ensure_ffprobe_available():",
+        "MAX_AUDIO_DURATION_SECONDS = 15 * 60",
+        "def probe_audio_duration(audio_path, ffprobe_path):",
+        "timeout=FFPROBE_TIMEOUT_SECONDS",
+        "duration > MAX_AUDIO_DURATION_SECONDS",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
         "TRANSCRIPTION_LOCK = threading.Lock()",
         "TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30",
-        "def transcribe_with_lock(model, data, suffix):",
+        "def transcribe_with_lock(model, data, suffix, ffprobe_path):",
         "TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)",
         "audio_path = write_audio_bytes(data, suffix)",
+        "probe_audio_duration(audio_path, ffprobe_path)",
         "if audio_path is not None:",
         "TRANSCRIPTION_LOCK.release()",
     ):
         if contract not in app_source:
             failures.append(f"app.py must keep audio validation contract: {contract}")
+
+    if not re.search(r"^FFPROBE_TIMEOUT_SECONDS = 10$", app_source, re.MULTILINE):
+        failures.append("app.py must keep the exact 10-second ffprobe timeout")
 
     streamlit_config = (ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8")
     if "maxUploadSize = 25" not in streamlit_config:
@@ -147,6 +156,16 @@ def main():
         failures.append("tests must reject truncated audio declarations before tempfile writes")
     if "test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model" not in tests_source:
         failures.append("tests must cover missing ffmpeg before model loading")
+    if "test_transcribe_uploaded_file_checks_ffprobe_before_tempfile" not in tests_source:
+        failures.append("tests must cover missing ffprobe before temporary-file creation")
+    if "test_probe_audio_duration_uses_bounded_json_probe" not in tests_source:
+        failures.append("tests must cover the bounded ffprobe command")
+    if "test_probe_audio_duration_rejects_excessive_duration" not in tests_source:
+        failures.append("tests must cover the maximum audio duration")
+    if "test_probe_audio_duration_sanitizes_probe_failures" not in tests_source:
+        failures.append("tests must sanitize ffprobe failures")
+    if "test_transcribe_uploaded_file_rejects_long_audio_before_model_load" not in tests_source:
+        failures.append("tests must reject long audio before model loading")
     if "test_transcribe_uploaded_file_serializes_shared_model_calls" not in tests_source:
         failures.append("tests must cover serialized access to the cached Whisper model")
     if (

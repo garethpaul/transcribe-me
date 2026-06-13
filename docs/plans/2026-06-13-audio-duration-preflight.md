@@ -1,6 +1,6 @@
 # Audio Duration Preflight
 
-## Status: In Progress
+## Status: Completed
 
 ## Context
 
@@ -59,10 +59,11 @@ preserving the existing upload, lock, temporary-file, and cleanup boundaries.
 
 ## Verification
 
-- Focused duration-preflight tests
-- Full `make check`
-- Isolated `pip check` and direct-pin `pip-audit`
+- Python 3.12.8 passed all 71 tests, including bounded command construction,
+  accepted, invalid, excessive, failed, and timed-out probe outcomes.
+- `make check PYTHON=/tmp/transcribe-duration-venv/bin/python` passed Ruff
+  formatting/linting, compilation, completed-plan checks, all tests, isolated
+  `pip check`, and direct-pin `pip-audit`.
 - Hostile mutations removing the probe, duration bound, timeout, cleanup, or
-  regression-test contracts
-- `git diff --check` and focused secret/artifact review
-
+  regression-test contracts were rejected.
+- `git diff --check` and focused secret/artifact review passed.
