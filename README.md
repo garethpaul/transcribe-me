@@ -68,7 +68,8 @@ a temporary file. If filename
 metadata is absent or unusable, the temporary suffix is derived from content;
 if a supported filename extension conflicts with detected content, the upload
 is rejected. Before Whisper loads, `ffprobe` gets at most 10 seconds to confirm
-a finite positive duration no longer than 15 minutes.
+a finite positive duration no longer than 15 minutes, with its stdin connected
+to the null device instead of inherited from the Streamlit process.
 
 ## Testing and Verification
 

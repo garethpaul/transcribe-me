@@ -16,6 +16,7 @@ CLEANUP_ERROR_PLAN = DOCS_PLANS / "2026-06-10-temp-cleanup-errors.md"
 LOCK_TIMEOUT_PLAN = DOCS_PLANS / "2026-06-12-transcription-lock-timeout.md"
 LOCK_BEFORE_TEMPFILE_PLAN = DOCS_PLANS / "2026-06-12-lock-before-tempfile.md"
 TRUNCATED_AUDIO_PLAN = DOCS_PLANS / "2026-06-13-truncated-audio-containers.md"
+FFPROBE_STDIN_PLAN = DOCS_PLANS / "2026-06-13-ffprobe-stdin-isolation.md"
 
 
 def main():
@@ -42,6 +43,8 @@ def main():
         failures.append("docs/plans/2026-06-12-lock-before-tempfile.md is missing")
     if not TRUNCATED_AUDIO_PLAN.exists():
         failures.append("docs/plans/2026-06-13-truncated-audio-containers.md is missing")
+    if not FFPROBE_STDIN_PLAN.exists():
+        failures.append("docs/plans/2026-06-13-ffprobe-stdin-isolation.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -53,6 +56,15 @@ def main():
             failures.append(
                 f"{plan_path.relative_to(ROOT)} must record completed status and make check verification"
             )
+
+    documentation_contracts = {
+        "README.md": "null device instead of inherited",
+        "SECURITY.md": "null device rather than inherited",
+        "VISION.md": "Keep media-probe subprocesses non-interactive",
+    }
+    for relative_path, contract in documentation_contracts.items():
+        if contract not in (ROOT / relative_path).read_text(encoding="utf-8"):
+            failures.append(f"{relative_path} must document ffprobe stdin isolation")
 
     app_source = (ROOT / "app.py").read_text(encoding="utf-8")
     if "st.text(transcript)" not in app_source:
@@ -79,6 +91,7 @@ def main():
         "def ensure_ffprobe_available():",
         "MAX_AUDIO_DURATION_SECONDS = 15 * 60",
         "def probe_audio_duration(audio_path, ffprobe_path):",
+        "stdin=subprocess.DEVNULL",
         "timeout=FFPROBE_TIMEOUT_SECONDS",
         "duration > MAX_AUDIO_DURATION_SECONDS",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
@@ -160,6 +173,9 @@ def main():
         failures.append("tests must cover missing ffprobe before temporary-file creation")
     if "test_probe_audio_duration_uses_bounded_json_probe" not in tests_source:
         failures.append("tests must cover the bounded ffprobe command")
+    for contract in ('"stdin": subprocess.DEVNULL',):
+        if contract not in tests_source:
+            failures.append(f"tests must cover ffprobe stdin isolation: {contract}")
     if "test_probe_audio_duration_rejects_excessive_duration" not in tests_source:
         failures.append("tests must cover the maximum audio duration")
     if "test_probe_audio_duration_sanitizes_probe_failures" not in tests_source:

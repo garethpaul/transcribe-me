@@ -2,6 +2,8 @@
 
 ## 2026-06-13
 
+- Disconnected ffprobe stdin from the Streamlit process while retaining the
+  existing ten-second probe timeout.
 - Added a 10-second `ffprobe` preflight that rejects invalid duration metadata
   and audio longer than 15 minutes before Whisper loads or transcribes.
 - Rejected truncated RIFF, `ftyp`, and ID3 declarations before temporary-file

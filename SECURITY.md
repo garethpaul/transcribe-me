@@ -42,7 +42,8 @@ replacement for ffmpeg's complete parsing.
 Accepted temporary audio is probed with a 10-second subprocess timeout before
 the Whisper model loads. Missing, invalid, non-finite, non-positive, or longer
 than 15-minute duration metadata is rejected behind stable user-facing errors;
-probe output and local paths are not exposed.
+probe output and local paths are not exposed. The ffprobe child's stdin is
+connected to the null device rather than inherited from the Streamlit process.
 
 Upload write failures should clean up any temporary file path they created and
 surface a generic user-facing save error without local path details.
