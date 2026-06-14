@@ -179,6 +179,8 @@ Do not commit real user audio or transcripts.
   shared-model wait and cleanup contract.
 - See `docs/plans/2026-06-12-lock-before-tempfile.md` for lock acquisition
   before sensitive temporary audio is written.
+- See `docs/plans/2026-06-14-make-root-override-protection.md` for repository-
+  anchored Make verification under hostile root assignments.
 - See `CHANGES.md` for the maintenance history.
 
 ## Contributing

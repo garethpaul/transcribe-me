@@ -1,6 +1,6 @@
 # Make Root Override Protection
 
-## Status: Planned
+## Status: Completed
 
 ## Context
 
@@ -73,13 +73,31 @@ This change does not modify application logic, accepted media formats, upload
 limits, duration checks, subprocess isolation, temporary-file lifecycle,
 transcription locking, Streamlit UI, package pins, or workflow policy.
 
-## Verification Plan
+## Work Completed
 
-- Run the focused documentation checker and Make dry-run checks.
-- Exercise all aliases from both working directories under hostile root
-  assignments while preserving explicit Python selection.
-- Reject eight focused structural and evidence mutations.
-- Run the full pinned `make check` gate with an explicit timeout from both
-  repository and external working directories.
-- Review the exact plan-scoped diff and audit generated artifacts, changed-line
-  secrets, whitespace, and protected application/workflow/dependency paths.
+- Protected the derived repository root with GNU Make's `override` directive
+  while preserving explicit Python interpreter selection and all aliases.
+- Added declaration-count, ordering, alias, repository-path, README, and plan
+  contracts to the canonical checker.
+- Indexed the completed evidence without modifying application, test,
+  dependency, workflow, or security behavior.
+
+## Verification Results
+
+- All seven public aliases passed dry-run verification from repository and
+  external working directories under hostile environment and command-line
+  `ROOT` assignments, for 28 bounded cases; explicit `PYTHON` overrides remained
+  effective.
+- Eight declaration protection, duplicate assignment, ordering, alias,
+  checker-path, README, missing-plan, and incomplete-plan mutations were
+  rejected.
+- A disposable exact-source snapshot passed the pinned Python 3.12.8
+  `make check` gate under an explicit timeout: Ruff format and lint, 71 tests,
+  source compilation, repository contracts, `pip check`, and `pip-audit` with no
+  known runtime vulnerabilities.
+- The completed plan record passed the same full gate from the repository and
+  an external working directory.
+- Plan-aware correctness, build-integrity, security, testing, maintainability,
+  reliability, and project-standards review found no actionable findings.
+- Exact diff, protected application/test/workflow/dependency path,
+  generated-artifact, changed-line secret, and whitespace audits passed.

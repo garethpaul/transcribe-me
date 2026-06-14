@@ -1,6 +1,6 @@
 .PHONY: audit build check format lint test verify
 
-ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+override ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PYTHON ?= python3
 
 format:
