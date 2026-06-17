@@ -17,6 +17,7 @@ LOCK_TIMEOUT_PLAN = DOCS_PLANS / "2026-06-12-transcription-lock-timeout.md"
 LOCK_BEFORE_TEMPFILE_PLAN = DOCS_PLANS / "2026-06-12-lock-before-tempfile.md"
 TRUNCATED_AUDIO_PLAN = DOCS_PLANS / "2026-06-13-truncated-audio-containers.md"
 FFPROBE_STDIN_PLAN = DOCS_PLANS / "2026-06-13-ffprobe-stdin-isolation.md"
+FFPROBE_STDERR_PLAN = DOCS_PLANS / "2026-06-17-ffprobe-stderr-boundary.md"
 ROOT_OVERRIDE_PLAN = DOCS_PLANS / "2026-06-14-make-root-override-protection.md"
 
 
@@ -46,6 +47,8 @@ def main():
         failures.append("docs/plans/2026-06-13-truncated-audio-containers.md is missing")
     if not FFPROBE_STDIN_PLAN.exists():
         failures.append("docs/plans/2026-06-13-ffprobe-stdin-isolation.md is missing")
+    if not FFPROBE_STDERR_PLAN.exists():
+        failures.append("docs/plans/2026-06-17-ffprobe-stderr-boundary.md is missing")
     if not ROOT_OVERRIDE_PLAN.exists():
         failures.append("docs/plans/2026-06-14-make-root-override-protection.md is missing")
 
@@ -95,6 +98,8 @@ def main():
         "MAX_AUDIO_DURATION_SECONDS = 15 * 60",
         "def probe_audio_duration(audio_path, ffprobe_path):",
         "stdin=subprocess.DEVNULL",
+        "stdout=subprocess.PIPE",
+        "stderr=subprocess.DEVNULL",
         "timeout=FFPROBE_TIMEOUT_SECONDS",
         "duration > MAX_AUDIO_DURATION_SECONDS",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
@@ -109,6 +114,9 @@ def main():
     ):
         if contract not in app_source:
             failures.append(f"app.py must keep audio validation contract: {contract}")
+
+    if "capture_output=True" in app_source:
+        failures.append("ffprobe must not capture unused stderr in memory")
 
     if not re.search(r"^FFPROBE_TIMEOUT_SECONDS = 10$", app_source, re.MULTILINE):
         failures.append("app.py must keep the exact 10-second ffprobe timeout")
@@ -195,9 +203,13 @@ def main():
         failures.append("tests must cover missing ffprobe before temporary-file creation")
     if "test_probe_audio_duration_uses_bounded_json_probe" not in tests_source:
         failures.append("tests must cover the bounded ffprobe command")
-    for contract in ('"stdin": subprocess.DEVNULL',):
+    for contract in (
+        '"stdin": subprocess.DEVNULL',
+        '"stdout": subprocess.PIPE',
+        '"stderr": subprocess.DEVNULL',
+    ):
         if contract not in tests_source:
-            failures.append(f"tests must cover ffprobe stdin isolation: {contract}")
+            failures.append(f"tests must cover ffprobe pipe isolation: {contract}")
     if "test_probe_audio_duration_rejects_excessive_duration" not in tests_source:
         failures.append("tests must cover the maximum audio duration")
     if "test_probe_audio_duration_sanitizes_probe_failures" not in tests_source:

@@ -28,6 +28,7 @@ Priority:
 - Fail clearly when the required system ffmpeg executable is unavailable
 - Bound media probing and reject audio longer than 15 minutes before model work
 - Keep media-probe subprocesses non-interactive and isolated from server stdin
+- Discard unused ffprobe diagnostics instead of buffering stderr in memory
 - Clean up temporary files when upload writes fail
 - Keep temporary-file deletion failures behind user-safe error messages
 - Report transcription failures without leaking local exception details

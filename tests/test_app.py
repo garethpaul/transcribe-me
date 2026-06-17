@@ -868,8 +868,9 @@ def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch):
             ],
             {
                 "check": True,
-                "capture_output": True,
                 "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.DEVNULL,
                 "text": True,
                 "timeout": 10,
             },

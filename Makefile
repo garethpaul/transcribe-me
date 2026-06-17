@@ -10,6 +10,7 @@ lint:
 	cd "$(ROOT)" && $(PYTHON) -m ruff check .
 	$(PYTHON) -m compileall -q "$(ROOT)/app.py" "$(ROOT)/scripts" "$(ROOT)/tests"
 	$(PYTHON) "$(ROOT)/scripts/check_docs_plans.py"
+	$(PYTHON) "$(ROOT)/scripts/test_ffprobe_stderr_contract.py"
 
 test:
 	cd "$(ROOT)" && $(PYTHON) -m pytest -q

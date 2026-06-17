@@ -1,6 +1,6 @@
 # Discard Unused ffprobe Diagnostics
 
-## Status: Planned
+## Status: Completed
 
 ## Context
 
@@ -50,6 +50,22 @@ process retain unnecessary stderr output until exit or timeout.
 - Run repository and external-directory `make check`.
 - Audit the exact diff, generated artifacts, and credential patterns.
 - Require one bounded exact-head hosted snapshot after push.
+
+## Verification Results
+
+- Twelve focused ffprobe duration tests passed with the explicit stdin, stdout,
+  stderr, timeout, command, validation, and sanitization contracts intact.
+- Four hostile ffprobe stderr mutations were rejected for combined capture,
+  missing stdout capture, buffered stderr, and inherited stderr.
+- Repository and external-directory `make verify` passed formatting, linting,
+  documentation contracts, four hostile mutations, and all 71 offline tests.
+- Both `make check` invocations reached the unchanged audit phase and then
+  failed `pip check` on the ambient host's unrelated `virtualenv 20.24.6`
+  requirement for `platformdirs<4` versus installed `platformdirs 4.10.0`; the
+  repository's direct-runtime `pip-audit --no-deps --disable-pip` gate found no
+  known vulnerabilities.
+- No live ffprobe, ffmpeg, Whisper model, production audio, or browser session
+  was exercised.
 
 ## Scope Boundaries
 

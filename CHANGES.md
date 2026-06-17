@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-06-17
+
+- Retained only ffprobe duration JSON stdout and discarded unused diagnostics
+  instead of buffering stderr in application memory.
+
 ## 2026-06-13
 
 - Disconnected ffprobe stdin from the Streamlit process while retaining the

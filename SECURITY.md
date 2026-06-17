@@ -44,6 +44,8 @@ the Whisper model loads. Missing, invalid, non-finite, non-positive, or longer
 than 15-minute duration metadata is rejected behind stable user-facing errors;
 probe output and local paths are not exposed. The ffprobe child's stdin is
 connected to the null device rather than inherited from the Streamlit process.
+Only the duration JSON stdout is retained; unused ffprobe stderr is discarded
+instead of buffered in application memory.
 
 Upload write failures should clean up any temporary file path they created and
 surface a generic user-facing save error without local path details.

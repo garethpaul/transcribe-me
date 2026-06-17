@@ -168,8 +168,9 @@ def probe_audio_duration(audio_path, ffprobe_path):
                 audio_path,
             ],
             check=True,
-            capture_output=True,
             stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             timeout=FFPROBE_TIMEOUT_SECONDS,
         )

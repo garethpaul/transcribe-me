@@ -69,7 +69,9 @@ metadata is absent or unusable, the temporary suffix is derived from content;
 if a supported filename extension conflicts with detected content, the upload
 is rejected. Before Whisper loads, `ffprobe` gets at most 10 seconds to confirm
 a finite positive duration no longer than 15 minutes, with its stdin connected
-to the null device instead of inherited from the Streamlit process.
+to the null device instead of inherited from the Streamlit process. The probe
+captures only its duration JSON stdout and discards unused stderr rather than
+buffering attacker-influenced diagnostics in memory.
 
 ## Testing and Verification
 
@@ -173,6 +175,8 @@ Do not commit real user audio or transcripts.
   `ftyp`, and ID3 declaration checks.
 - See `docs/plans/2026-06-13-audio-duration-preflight.md` for the bounded
   `ffprobe` and 15-minute input contract.
+- See `docs/plans/2026-06-17-ffprobe-stderr-boundary.md` for the discarded
+  diagnostic-output boundary.
 - See `docs/plans/2026-06-10-transcription-concurrency.md` for serialized access
   to the cached Whisper model.
 - See `docs/plans/2026-06-12-transcription-lock-timeout.md` for the bounded
