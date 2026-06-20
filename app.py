@@ -1,8 +1,12 @@
+import json
+import math
 import streamlit as st
 import whisper
 import tempfile
 import os
 import shutil
+import stat
+import subprocess
 import threading
 from pathlib import Path
 
@@ -15,12 +19,21 @@ UPLOAD_HELP_TEXT = "Upload an audio file up to %d MB." % MAX_UPLOAD_MEGABYTES
 TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio file."
 TRANSCRIPTION_BUSY_MESSAGE = "Transcription service is busy. Try again shortly."
 TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30
+FFPROBE_TIMEOUT_SECONDS = 10
+MAX_FFPROBE_STDOUT_BYTES = 4096
+MAX_AUDIO_DURATION_SECONDS = 15 * 60
+MAX_AUDIO_CHANNELS = 2
+MAX_AUDIO_SAMPLE_RATE_HZ = 96_000
+MAX_DECODED_SAMPLES = 86_400_000
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 UNSUPPORTED_AUDIO_MESSAGE = "Uploaded file content is not a supported audio format."
 MISMATCHED_AUDIO_MESSAGE = "Uploaded file content does not match its filename extension."
 FFMPEG_MISSING_MESSAGE = "ffmpeg is required to transcribe audio."
+FFPROBE_MISSING_MESSAGE = "ffprobe is required to validate audio."
+AUDIO_TOO_LONG_MESSAGE = "Uploaded audio is longer than 15 minutes."
 TRANSCRIPTION_LOCK = threading.Lock()
+TRANSCRIPTION_ADMISSION = threading.BoundedSemaphore(2)
 
 
 class UploadValidationError(ValueError):
@@ -64,33 +77,64 @@ def uploaded_audio_bytes(uploaded_file):
     return data
 
 
-def detected_audio_suffix(data):
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WAVE":
-        return ".wav"
-    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in ALLOWED_M4A_BRANDS:
-        return ".m4a"
+def has_complete_riff_header(data):
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return False
+    riff_size = int.from_bytes(data[4:8], "little")
+    return riff_size >= 4 and riff_size + 8 <= len(data)
+
+
+def has_complete_ftyp_box(data):
+    if len(data) < 16 or data[4:8] != b"ftyp" or data[8:12] not in ALLOWED_M4A_BRANDS:
+        return False
+    box_size = int.from_bytes(data[:4], "big")
+    return box_size == 0 or 16 <= box_size <= len(data)
+
+
+def has_mp3_frame_header(data, offset=0):
+    if len(data) < offset + 4:
+        return False
+    frame_header = int.from_bytes(data[offset : offset + 4], "big")
+    has_sync = frame_header & 0xFFE00000 == 0xFFE00000
+    version = (frame_header >> 19) & 0x3
+    layer = (frame_header >> 17) & 0x3
+    bitrate = (frame_header >> 12) & 0xF
+    sample_rate = (frame_header >> 10) & 0x3
+    return (
+        has_sync
+        and version != 0x1
+        and layer != 0x0
+        and bitrate not in {0x0, 0xF}
+        and sample_rate != 0x3
+    )
+
+
+def id3_audio_offset(data):
     if (
-        len(data) >= 10
-        and data[:3] == b"ID3"
-        and data[3] in {2, 3, 4}
-        and all(byte < 0x80 for byte in data[6:10])
+        len(data) < 10
+        or data[:3] != b"ID3"
+        or data[3] not in {2, 3, 4}
+        or any(byte >= 0x80 for byte in data[6:10])
     ):
+        return None
+    tag_size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
+    footer_size = 10 if data[3] == 4 and data[5] & 0x10 else 0
+    audio_offset = 10 + tag_size + footer_size
+    if audio_offset > len(data):
+        return None
+    return audio_offset
+
+
+def detected_audio_suffix(data):
+    if has_complete_riff_header(data):
+        return ".wav"
+    if has_complete_ftyp_box(data):
+        return ".m4a"
+    audio_offset = id3_audio_offset(data)
+    if audio_offset is not None and has_mp3_frame_header(data, audio_offset):
         return ".mp3"
-    if len(data) >= 4:
-        frame_header = int.from_bytes(data[:4], "big")
-        has_sync = frame_header & 0xFFE00000 == 0xFFE00000
-        version = (frame_header >> 19) & 0x3
-        layer = (frame_header >> 17) & 0x3
-        bitrate = (frame_header >> 12) & 0xF
-        sample_rate = (frame_header >> 10) & 0x3
-        if (
-            has_sync
-            and version != 0x1
-            and layer != 0x0
-            and bitrate not in {0x0, 0xF}
-            and sample_rate != 0x3
-        ):
-            return ".mp3"
+    if has_mp3_frame_header(data):
+        return ".mp3"
     raise UploadValidationError(UNSUPPORTED_AUDIO_MESSAGE)
 
 
@@ -107,6 +151,130 @@ def validated_audio_suffix(uploaded_file, data):
 def ensure_ffmpeg_available():
     if shutil.which("ffmpeg") is None:
         raise TranscriptionError(FFMPEG_MISSING_MESSAGE)
+
+
+def ensure_ffprobe_available():
+    ffprobe_path = shutil.which("ffprobe")
+    if ffprobe_path is None:
+        raise TranscriptionError(FFPROBE_MISSING_MESSAGE)
+    return ffprobe_path
+
+
+def ensure_private_regular_audio_file(audio_path):
+    try:
+        metadata = os.lstat(audio_path)
+    except OSError as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+    if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if metadata.st_size <= 0 or metadata.st_size > MAX_UPLOAD_BYTES:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+
+def validate_probe_metadata(metadata, audio_path):
+    if not isinstance(metadata, dict):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    format_metadata = metadata.get("format")
+    streams = metadata.get("streams")
+    if not isinstance(format_metadata, dict) or not isinstance(streams, list) or len(streams) != 1:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    stream = streams[0]
+    if not isinstance(stream, dict) or stream.get("codec_type") != "audio":
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+    suffix = Path(audio_path).suffix.lower()
+    format_names = format_metadata.get("format_name")
+    codec_name = stream.get("codec_name")
+    if not isinstance(format_names, str) or not isinstance(codec_name, str):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    format_names = set(format_names.split(","))
+    if suffix == ".wav":
+        valid_container = "wav" in format_names and codec_name.startswith("pcm_")
+    elif suffix in {".mp3", ".mpeg"}:
+        valid_container = "mp3" in format_names and codec_name == "mp3"
+    elif suffix == ".m4a":
+        valid_container = bool(format_names & {"mov", "mp4", "m4a"}) and codec_name in {
+            "aac",
+            "alac",
+        }
+    else:
+        valid_container = False
+    if not valid_container:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+    try:
+        duration_value = format_metadata["duration"]
+        channels = stream["channels"]
+        sample_rate_value = stream["sample_rate"]
+    except (KeyError, TypeError, ValueError) as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+    if isinstance(duration_value, bool) or not isinstance(duration_value, (int, float, str)):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if type(channels) is not int:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if type(sample_rate_value) is int:
+        sample_rate = sample_rate_value
+    elif isinstance(sample_rate_value, str) and sample_rate_value.isdecimal():
+        sample_rate = int(sample_rate_value)
+    else:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    try:
+        duration = float(duration_value)
+    except ValueError as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+    if not math.isfinite(duration) or duration <= 0:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if duration > MAX_AUDIO_DURATION_SECONDS:
+        raise TranscriptionError(AUDIO_TOO_LONG_MESSAGE)
+    if not 1 <= channels <= MAX_AUDIO_CHANNELS:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if not 1 <= sample_rate <= MAX_AUDIO_SAMPLE_RATE_HZ:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if duration * channels * sample_rate > MAX_DECODED_SAMPLES:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    return duration
+
+
+def probe_audio_duration(audio_path, ffprobe_path):
+    ensure_private_regular_audio_file(audio_path)
+    try:
+        completed = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration,format_name:stream=codec_name,codec_type,channels,sample_rate",
+                "-select_streams",
+                "a:0",
+                "-of",
+                "json",
+                audio_path,
+            ],
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=FFPROBE_TIMEOUT_SECONDS,
+        )
+        if (
+            not isinstance(completed.stdout, str)
+            or len(completed.stdout) > MAX_FFPROBE_STDOUT_BYTES
+        ):
+            raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+        metadata = json.loads(completed.stdout)
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        OSError,
+        subprocess.SubprocessError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+
+    return validate_probe_metadata(metadata, audio_path)
 
 
 def validated_uploaded_audio(uploaded_file):
@@ -159,36 +327,47 @@ def normalized_transcript_text(result):
     return text
 
 
-def transcribe_with_lock(model, audio_path):
-    acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
-    if not acquired:
+def transcribe_with_lock(model, data, suffix, ffprobe_path):
+    admitted = TRANSCRIPTION_ADMISSION.acquire(blocking=False)
+    if not admitted:
         raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
     try:
-        return model.transcribe(audio_path)
+        acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
+        if not acquired:
+            raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
+        audio_path = None
+        try:
+            audio_path = write_audio_bytes(data, suffix)
+            probe_audio_duration(audio_path, ffprobe_path)
+            ensure_private_regular_audio_file(audio_path)
+            if model is None:
+                model = get_model()
+            return model.transcribe(audio_path)
+        finally:
+            try:
+                if audio_path is not None:
+                    remove_audio_file(
+                        audio_path,
+                        TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
+                    )
+            finally:
+                TRANSCRIPTION_LOCK.release()
     finally:
-        TRANSCRIPTION_LOCK.release()
+        TRANSCRIPTION_ADMISSION.release()
 
 
 def transcribe_uploaded_file(uploaded_file, model=None):
     data, suffix = validated_uploaded_audio(uploaded_file)
     if model is None:
         ensure_ffmpeg_available()
-    audio_path = write_audio_bytes(data, suffix)
+    ffprobe_path = ensure_ffprobe_available()
     try:
-        try:
-            if model is None:
-                model = get_model()
-            result = transcribe_with_lock(model, audio_path)
-            return normalized_transcript_text(result)
-        except TranscriptionError:
-            raise
-        except Exception as error:
-            raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
-    finally:
-        remove_audio_file(
-            audio_path,
-            TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
-        )
+        result = transcribe_with_lock(model, data, suffix, ffprobe_path)
+        return normalized_transcript_text(result)
+    except (UploadValidationError, TranscriptionError):
+        raise
+    except Exception as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
 
 
 def main():

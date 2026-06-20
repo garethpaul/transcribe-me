@@ -6,9 +6,8 @@
 
 The cached Whisper model is protected by a process-wide lock because Streamlit
 sessions share the model. That prevents overlapping inference, but lock
-acquisition is currently unbounded. If one inference stalls, every later
-session can remain blocked indefinitely while its validated audio remains in a
-temporary file.
+acquisition was unbounded. If one inference stalled, every later session could
+remain blocked indefinitely.
 
 ## Priority
 
@@ -31,7 +30,7 @@ path without weakening the existing single-inference safety boundary.
   model inference.
 - R2. Lock contention must raise a stable `TranscriptionError` message without
   invoking the model.
-- R3. Any temporary upload must still be removed after lock timeout.
+- R3. Lock contention must fail before a temporary upload is created.
 - R4. Acquired locks must be released after both successful and failed model
   calls.
 - R5. Existing upload validation, transcript normalization, and user-safe error
@@ -50,8 +49,8 @@ path without weakening the existing single-inference safety boundary.
 ### U2. Add deterministic lifecycle tests
 
 - **Files:** `tests/test_app.py`
-- Use fake locks to prove the timeout value, no model call on contention,
-  cleanup of the temporary file, and release after success and failure.
+- Use fake locks to prove the timeout value, no temp write or model call on
+  contention, and release after success, write failure, and model failure.
 
 ### U3. Preserve maintenance contracts
 

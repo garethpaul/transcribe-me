@@ -23,22 +23,32 @@ Priority:
   parser or model invocation
 - Reject unreadable, empty, oversized, and non-byte uploads before writing
   temporary files
+- Reject truncated leading audio-container declarations before temp writes
 - Enforce upload limits at both Streamlit and application boundaries
 - Fail clearly when the required system ffmpeg executable is unavailable
+- Bound media probing and reject audio longer than 15 minutes before model work
+- Keep media-probe subprocesses non-interactive and isolated from server stdin
+- Discard unused ffprobe diagnostics instead of buffering stderr in memory
+- Bound ffprobe metadata output and validate container, codec, channels, and
+  sample rate before model work
+- Bound the combined decoded-sample budget before model work
+- Require temporary audio inputs to remain private regular files
 - Clean up temporary files when upload writes fail
 - Keep temporary-file deletion failures behind user-safe error messages
 - Report transcription failures without leaking local exception details
 - Validate and trim model transcript text before display
 - Display transcripts as plain text
 - Serialize inference against the process-wide cached Whisper model
-- Bound waits for the shared model lock and clean up timed-out uploads
+- Bound waits for the shared model lock before creating temporary audio
+- Admit at most one active and one queued transcription request per process
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 
 Next priorities:
 
-- Add an explicit processing-time or audio-duration bound
-- Add a bounded job queue with user-visible waiting and cancellation state
+- Add an explicit total processing-time bound for accepted model calls
+- Replace the minimal admission gate with a production queue only if this demo
+  grows into a multi-user service
 - Add manual live-inference verification with synthetic audio
 - Review Streamlit and Whisper upgrades with real model smoke tests
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 
@@ -13,6 +14,12 @@ AUDIO_SIGNATURE_PLAN = DOCS_PLANS / "2026-06-10-audio-signature-and-ci.md"
 CONCURRENCY_PLAN = DOCS_PLANS / "2026-06-10-transcription-concurrency.md"
 CLEANUP_ERROR_PLAN = DOCS_PLANS / "2026-06-10-temp-cleanup-errors.md"
 LOCK_TIMEOUT_PLAN = DOCS_PLANS / "2026-06-12-transcription-lock-timeout.md"
+LOCK_BEFORE_TEMPFILE_PLAN = DOCS_PLANS / "2026-06-12-lock-before-tempfile.md"
+TRUNCATED_AUDIO_PLAN = DOCS_PLANS / "2026-06-13-truncated-audio-containers.md"
+FFPROBE_STDIN_PLAN = DOCS_PLANS / "2026-06-13-ffprobe-stdin-isolation.md"
+FFPROBE_STDERR_PLAN = DOCS_PLANS / "2026-06-17-ffprobe-stderr-boundary.md"
+ROOT_OVERRIDE_PLAN = DOCS_PLANS / "2026-06-14-make-root-override-protection.md"
+DEEP_REVIEW_PLAN = DOCS_PLANS / "2026-06-19-audio-ingestion-deep-review.md"
 
 
 def main():
@@ -35,6 +42,18 @@ def main():
         failures.append("docs/plans/2026-06-10-temp-cleanup-errors.md is missing")
     if not LOCK_TIMEOUT_PLAN.exists():
         failures.append("docs/plans/2026-06-12-transcription-lock-timeout.md is missing")
+    if not LOCK_BEFORE_TEMPFILE_PLAN.exists():
+        failures.append("docs/plans/2026-06-12-lock-before-tempfile.md is missing")
+    if not TRUNCATED_AUDIO_PLAN.exists():
+        failures.append("docs/plans/2026-06-13-truncated-audio-containers.md is missing")
+    if not FFPROBE_STDIN_PLAN.exists():
+        failures.append("docs/plans/2026-06-13-ffprobe-stdin-isolation.md is missing")
+    if not FFPROBE_STDERR_PLAN.exists():
+        failures.append("docs/plans/2026-06-17-ffprobe-stderr-boundary.md is missing")
+    if not ROOT_OVERRIDE_PLAN.exists():
+        failures.append("docs/plans/2026-06-14-make-root-override-protection.md is missing")
+    if not DEEP_REVIEW_PLAN.exists():
+        failures.append("docs/plans/2026-06-19-audio-ingestion-deep-review.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -46,6 +65,15 @@ def main():
             failures.append(
                 f"{plan_path.relative_to(ROOT)} must record completed status and make check verification"
             )
+
+    documentation_contracts = {
+        "README.md": "null device instead of inherited",
+        "SECURITY.md": "null device rather than inherited",
+        "VISION.md": "Keep media-probe subprocesses non-interactive",
+    }
+    for relative_path, contract in documentation_contracts.items():
+        if contract not in (ROOT / relative_path).read_text(encoding="utf-8"):
+            failures.append(f"{relative_path} must document ffprobe stdin isolation")
 
     app_source = (ROOT / "app.py").read_text(encoding="utf-8")
     if "st.text(transcript)" not in app_source:
@@ -60,43 +88,110 @@ def main():
     for contract in (
         "def remove_audio_file(audio_path, cleanup_error):",
         "def detected_audio_suffix(data):",
+        "def has_complete_riff_header(data):",
+        "riff_size + 8 <= len(data)",
+        "def has_complete_ftyp_box(data):",
+        "16 <= box_size <= len(data)",
+        "def id3_audio_offset(data):",
+        "audio_offset > len(data)",
+        "has_mp3_frame_header(data, audio_offset)",
         "def validated_audio_suffix(uploaded_file, data):",
         "def ensure_ffmpeg_available():",
+        "def ensure_ffprobe_available():",
+        "MAX_AUDIO_DURATION_SECONDS = 15 * 60",
+        "MAX_FFPROBE_STDOUT_BYTES = 4096",
+        "MAX_AUDIO_CHANNELS = 2",
+        "MAX_AUDIO_SAMPLE_RATE_HZ = 96_000",
+        "MAX_DECODED_SAMPLES = 86_400_000",
+        "def probe_audio_duration(audio_path, ffprobe_path):",
+        "def validate_probe_metadata(metadata, audio_path):",
+        "def ensure_private_regular_audio_file(audio_path):",
+        "stdin=subprocess.DEVNULL",
+        "stdout=subprocess.PIPE",
+        "stderr=subprocess.DEVNULL",
+        "timeout=FFPROBE_TIMEOUT_SECONDS",
+        "duration > MAX_AUDIO_DURATION_SECONDS",
+        "duration * channels * sample_rate > MAX_DECODED_SAMPLES",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
         "TRANSCRIPTION_LOCK = threading.Lock()",
+        "TRANSCRIPTION_ADMISSION = threading.BoundedSemaphore(2)",
         "TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30",
-        "def transcribe_with_lock(model, audio_path):",
+        "def transcribe_with_lock(model, data, suffix, ffprobe_path):",
         "TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)",
+        "audio_path = write_audio_bytes(data, suffix)",
+        "probe_audio_duration(audio_path, ffprobe_path)",
+        "if audio_path is not None:",
         "TRANSCRIPTION_LOCK.release()",
     ):
         if contract not in app_source:
             failures.append(f"app.py must keep audio validation contract: {contract}")
+
+    if "capture_output=True" in app_source:
+        failures.append("ffprobe must not capture unused stderr in memory")
+
+    if not re.search(r"^FFPROBE_TIMEOUT_SECONDS = 10$", app_source, re.MULTILINE):
+        failures.append("app.py must keep the exact 10-second ffprobe timeout")
 
     streamlit_config = (ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8")
     if "maxUploadSize = 25" not in streamlit_config:
         failures.append("Streamlit must reject uploads above the app's 25 MB limit")
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    root_declaration = "override ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))"
+    root_assignments = re.findall(r"^(?:override\s+)?ROOT\s*[:+?]?=", makefile, re.MULTILINE)
+    if len(root_assignments) != 1 or makefile.count(root_declaration) != 1:
+        failures.append("Makefile must contain exactly one protected repository-root declaration")
+    if makefile.count(f"{root_declaration}\nPYTHON ?= python3") != 1:
+        failures.append("Makefile must keep the protected root before the Python override")
     for contract in (
-        "ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))",
+        ".PHONY: audit build check format lint test verify",
+        "verify: format lint test build",
+        "check: verify audit",
+        'cd "$(ROOT)" && $(PYTHON) -m ruff format --check .',
+        'cd "$(ROOT)" && $(PYTHON) -m ruff check .',
+        '$(PYTHON) -m compileall -q "$(ROOT)/app.py" "$(ROOT)/scripts" "$(ROOT)/tests"',
+        '$(PYTHON) "$(ROOT)/scripts/check_docs_plans.py"',
+        '$(PYTHON) "$(ROOT)/scripts/test_audio_boundary_contract.py"',
+        'cd "$(ROOT)" && $(PYTHON) -m pytest -q',
+        '$(PYTHON) -m py_compile "$(ROOT)/app.py"',
         "env -u PYTHONPATH $(PYTHON) -m pip check",
         'pip_audit --requirement "$(ROOT)/requirements.txt" --no-deps --disable-pip',
     ):
         if contract not in makefile:
             failures.append(f"Makefile verification contract is missing: {contract}")
 
+    if "docs/plans/2026-06-14-make-root-override-protection.md" not in (
+        ROOT / "README.md"
+    ).read_text(encoding="utf-8"):
+        failures.append("README.md must index Make root override protection evidence")
+
     workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+    workflow_files = sorted((ROOT / ".github" / "workflows").glob("*"))
+    if workflow_files != [ROOT / ".github" / "workflows" / "check.yml"]:
+        failures.append("GitHub Actions must contain only the reviewed check workflow")
     if "workflow_dispatch:" not in workflow:
         failures.append("GitHub Actions must support manual verification runs")
     for contract in (
         "concurrency:",
         "cancel-in-progress: true",
         "runs-on: ubuntu-24.04",
-        "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3",
+        "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
         "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
     ):
         if contract not in workflow:
             failures.append(f"GitHub Actions verification contract is missing: {contract}")
+    if workflow.count("uses: actions/checkout@") != 1:
+        failures.append("GitHub Actions must contain exactly one checkout step")
+    if workflow.count("uses: actions/setup-python@") != 1:
+        failures.append("GitHub Actions must contain exactly one Python setup step")
+    if workflow.count("permissions:") != 1 or "permissions:\n  contents: read" not in workflow:
+        failures.append("GitHub Actions must keep one top-level read-only permissions block")
+    if "persist-credentials: false" not in workflow:
+        failures.append("GitHub Actions checkout must not persist credentials")
+    if "pull_request_target:" in workflow or "permissions: write-all" in workflow:
+        failures.append("GitHub Actions must not use privileged triggers or write-all")
+    if re.search(r"^[ \t]+[A-Za-z0-9_-]+:[ \t]+write(?:[ \t]+#.*)?$", workflow, re.MULTILINE):
+        failures.append("GitHub Actions must not grant write permissions")
 
     tests_source = (ROOT / "tests" / "test_app.py").read_text(encoding="utf-8")
     if "test_write_uploaded_file_cleans_up_after_write_error" not in tests_source:
@@ -109,12 +204,39 @@ def main():
         failures.append("tests must cover content-derived suffixes when upload names fail")
     if "test_write_uploaded_file_rejects_extension_mismatch" not in tests_source:
         failures.append("tests must cover filename and content mismatches")
+    if (
+        "test_write_uploaded_file_rejects_truncated_audio_declarations_before_tempfile"
+        not in tests_source
+    ):
+        failures.append("tests must reject truncated audio declarations before tempfile writes")
     if "test_transcribe_uploaded_file_checks_ffmpeg_before_loading_model" not in tests_source:
         failures.append("tests must cover missing ffmpeg before model loading")
+    if "test_transcribe_uploaded_file_checks_ffprobe_before_tempfile" not in tests_source:
+        failures.append("tests must cover missing ffprobe before temporary-file creation")
+    if "test_probe_audio_duration_uses_bounded_json_probe" not in tests_source:
+        failures.append("tests must cover the bounded ffprobe command")
+    for contract in (
+        '"stdin": subprocess.DEVNULL',
+        '"stdout": subprocess.PIPE',
+        '"stderr": subprocess.DEVNULL',
+    ):
+        if contract not in tests_source:
+            failures.append(f"tests must cover ffprobe pipe isolation: {contract}")
+    if "test_probe_audio_duration_rejects_excessive_duration" not in tests_source:
+        failures.append("tests must cover the maximum audio duration")
+    if "test_probe_audio_duration_sanitizes_probe_failures" not in tests_source:
+        failures.append("tests must sanitize ffprobe failures")
+    if "test_transcribe_uploaded_file_rejects_long_audio_before_model_load" not in tests_source:
+        failures.append("tests must reject long audio before model loading")
     if "test_transcribe_uploaded_file_serializes_shared_model_calls" not in tests_source:
         failures.append("tests must cover serialized access to the cached Whisper model")
-    if "test_transcribe_uploaded_file_bounds_lock_wait_and_cleans_up" not in tests_source:
-        failures.append("tests must cover bounded lock waiting and temp-file cleanup")
+    if (
+        "test_transcribe_uploaded_file_bounds_lock_wait_before_tempfile_creation"
+        not in tests_source
+    ):
+        failures.append("tests must cover bounded lock waiting before temp-file creation")
+    if "test_transcribe_uploaded_file_releases_lock_after_write_failure" not in tests_source:
+        failures.append("tests must cover lock release after temp-file write failure")
     if "test_transcribe_uploaded_file_releases_acquired_lock" not in tests_source:
         failures.append("tests must cover lock release after model calls")
     if "test_main_reports_busy_transcription_message" not in tests_source:
