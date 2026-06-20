@@ -5,6 +5,7 @@ import whisper
 import tempfile
 import os
 import shutil
+import stat
 import subprocess
 import threading
 from pathlib import Path
@@ -19,7 +20,11 @@ TRANSCRIPTION_FAILURE_MESSAGE = "Transcription failed. Try a supported audio fil
 TRANSCRIPTION_BUSY_MESSAGE = "Transcription service is busy. Try again shortly."
 TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30
 FFPROBE_TIMEOUT_SECONDS = 10
+MAX_FFPROBE_STDOUT_BYTES = 4096
 MAX_AUDIO_DURATION_SECONDS = 15 * 60
+MAX_AUDIO_CHANNELS = 2
+MAX_AUDIO_SAMPLE_RATE_HZ = 96_000
+MAX_DECODED_SAMPLES = 86_400_000
 UPLOAD_READ_FAILURE_MESSAGE = "Uploaded audio file could not be read."
 UPLOAD_WRITE_FAILURE_MESSAGE = "Uploaded audio file could not be saved."
 UNSUPPORTED_AUDIO_MESSAGE = "Uploaded file content is not a supported audio format."
@@ -28,6 +33,7 @@ FFMPEG_MISSING_MESSAGE = "ffmpeg is required to transcribe audio."
 FFPROBE_MISSING_MESSAGE = "ffprobe is required to validate audio."
 AUDIO_TOO_LONG_MESSAGE = "Uploaded audio is longer than 15 minutes."
 TRANSCRIPTION_LOCK = threading.Lock()
+TRANSCRIPTION_ADMISSION = threading.BoundedSemaphore(2)
 
 
 class UploadValidationError(ValueError):
@@ -154,7 +160,83 @@ def ensure_ffprobe_available():
     return ffprobe_path
 
 
+def ensure_private_regular_audio_file(audio_path):
+    try:
+        metadata = os.lstat(audio_path)
+    except OSError as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+    if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if metadata.st_size <= 0 or metadata.st_size > MAX_UPLOAD_BYTES:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+
+def validate_probe_metadata(metadata, audio_path):
+    if not isinstance(metadata, dict):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    format_metadata = metadata.get("format")
+    streams = metadata.get("streams")
+    if not isinstance(format_metadata, dict) or not isinstance(streams, list) or len(streams) != 1:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    stream = streams[0]
+    if not isinstance(stream, dict) or stream.get("codec_type") != "audio":
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+    suffix = Path(audio_path).suffix.lower()
+    format_names = format_metadata.get("format_name")
+    codec_name = stream.get("codec_name")
+    if not isinstance(format_names, str) or not isinstance(codec_name, str):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    format_names = set(format_names.split(","))
+    if suffix == ".wav":
+        valid_container = "wav" in format_names and codec_name.startswith("pcm_")
+    elif suffix in {".mp3", ".mpeg"}:
+        valid_container = "mp3" in format_names and codec_name == "mp3"
+    elif suffix == ".m4a":
+        valid_container = bool(format_names & {"mov", "mp4", "m4a"}) and codec_name in {
+            "aac",
+            "alac",
+        }
+    else:
+        valid_container = False
+    if not valid_container:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+
+    try:
+        duration_value = format_metadata["duration"]
+        channels = stream["channels"]
+        sample_rate_value = stream["sample_rate"]
+    except (KeyError, TypeError, ValueError) as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+    if isinstance(duration_value, bool) or not isinstance(duration_value, (int, float, str)):
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if type(channels) is not int:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if type(sample_rate_value) is int:
+        sample_rate = sample_rate_value
+    elif isinstance(sample_rate_value, str) and sample_rate_value.isdecimal():
+        sample_rate = int(sample_rate_value)
+    else:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    try:
+        duration = float(duration_value)
+    except ValueError as error:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
+    if not math.isfinite(duration) or duration <= 0:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if duration > MAX_AUDIO_DURATION_SECONDS:
+        raise TranscriptionError(AUDIO_TOO_LONG_MESSAGE)
+    if not 1 <= channels <= MAX_AUDIO_CHANNELS:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if not 1 <= sample_rate <= MAX_AUDIO_SAMPLE_RATE_HZ:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    if duration * channels * sample_rate > MAX_DECODED_SAMPLES:
+        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+    return duration
+
+
 def probe_audio_duration(audio_path, ffprobe_path):
+    ensure_private_regular_audio_file(audio_path)
     try:
         completed = subprocess.run(
             [
@@ -162,7 +244,9 @@ def probe_audio_duration(audio_path, ffprobe_path):
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration",
+                "format=duration,format_name:stream=codec_name,codec_type,channels,sample_rate",
+                "-select_streams",
+                "a:0",
                 "-of",
                 "json",
                 audio_path,
@@ -174,7 +258,12 @@ def probe_audio_duration(audio_path, ffprobe_path):
             text=True,
             timeout=FFPROBE_TIMEOUT_SECONDS,
         )
-        duration = float(json.loads(completed.stdout)["format"]["duration"])
+        if (
+            not isinstance(completed.stdout, str)
+            or len(completed.stdout) > MAX_FFPROBE_STDOUT_BYTES
+        ):
+            raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+        metadata = json.loads(completed.stdout)
     except (
         json.JSONDecodeError,
         KeyError,
@@ -185,11 +274,7 @@ def probe_audio_duration(audio_path, ffprobe_path):
     ) as error:
         raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE) from error
 
-    if not math.isfinite(duration) or duration <= 0:
-        raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
-    if duration > MAX_AUDIO_DURATION_SECONDS:
-        raise TranscriptionError(AUDIO_TOO_LONG_MESSAGE)
-    return duration
+    return validate_probe_metadata(metadata, audio_path)
 
 
 def validated_uploaded_audio(uploaded_file):
@@ -243,25 +328,32 @@ def normalized_transcript_text(result):
 
 
 def transcribe_with_lock(model, data, suffix, ffprobe_path):
-    acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
-    if not acquired:
+    admitted = TRANSCRIPTION_ADMISSION.acquire(blocking=False)
+    if not admitted:
         raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
-    audio_path = None
     try:
-        audio_path = write_audio_bytes(data, suffix)
-        probe_audio_duration(audio_path, ffprobe_path)
-        if model is None:
-            model = get_model()
-        return model.transcribe(audio_path)
-    finally:
+        acquired = TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)
+        if not acquired:
+            raise TranscriptionError(TRANSCRIPTION_BUSY_MESSAGE)
+        audio_path = None
         try:
-            if audio_path is not None:
-                remove_audio_file(
-                    audio_path,
-                    TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
-                )
+            audio_path = write_audio_bytes(data, suffix)
+            probe_audio_duration(audio_path, ffprobe_path)
+            ensure_private_regular_audio_file(audio_path)
+            if model is None:
+                model = get_model()
+            return model.transcribe(audio_path)
         finally:
-            TRANSCRIPTION_LOCK.release()
+            try:
+                if audio_path is not None:
+                    remove_audio_file(
+                        audio_path,
+                        TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE),
+                    )
+            finally:
+                TRANSCRIPTION_LOCK.release()
+    finally:
+        TRANSCRIPTION_ADMISSION.release()
 
 
 def transcribe_uploaded_file(uploaded_file, model=None):

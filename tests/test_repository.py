@@ -10,7 +10,7 @@ def test_runtime_requirements_do_not_install_ffmpeg_python_wrapper():
 
     assert requirements == [
         "streamlit==1.58.0",
-        "pyarrow==23.0.1",
+        "pyarrow==24.0.0",
         "openai-whisper==20250625",
     ]
 
@@ -20,9 +20,9 @@ def test_test_requirements_are_pinned():
 
     assert requirements == [
         "pip==26.1.2",
-        "pip-audit==2.10.0",
-        "pytest==9.0.3",
-        "ruff==0.15.16",
+        "pip-audit==2.10.1",
+        "pytest==9.1.1",
+        "ruff==0.15.18",
     ]
 
 
@@ -51,7 +51,7 @@ def test_ci_runs_complete_check_with_least_privilege():
         "timeout-minutes: 10",
         'python-version: ["3.10", "3.12"]',
         "fail-fast: false",
-        "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3",
+        "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
         "persist-credentials: false",
         "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
         "python -m pip install --requirement test-requirements.txt",
@@ -81,3 +81,11 @@ def test_make_check_audits_pinned_direct_runtime_dependencies():
     assert "ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))" in makefile
     assert "env -u PYTHONPATH $(PYTHON) -m pip check" in makefile
     assert 'pip_audit --requirement "$(ROOT)/requirements.txt" --no-deps --disable-pip' in makefile
+
+
+def test_make_check_runs_audio_boundary_mutations():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    mutation_script = ROOT / "scripts" / "test_audio_boundary_contract.py"
+
+    assert '"$(ROOT)/scripts/test_audio_boundary_contract.py"' in makefile
+    assert mutation_script.is_file()

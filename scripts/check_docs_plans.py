@@ -19,6 +19,7 @@ TRUNCATED_AUDIO_PLAN = DOCS_PLANS / "2026-06-13-truncated-audio-containers.md"
 FFPROBE_STDIN_PLAN = DOCS_PLANS / "2026-06-13-ffprobe-stdin-isolation.md"
 FFPROBE_STDERR_PLAN = DOCS_PLANS / "2026-06-17-ffprobe-stderr-boundary.md"
 ROOT_OVERRIDE_PLAN = DOCS_PLANS / "2026-06-14-make-root-override-protection.md"
+DEEP_REVIEW_PLAN = DOCS_PLANS / "2026-06-19-audio-ingestion-deep-review.md"
 
 
 def main():
@@ -51,6 +52,8 @@ def main():
         failures.append("docs/plans/2026-06-17-ffprobe-stderr-boundary.md is missing")
     if not ROOT_OVERRIDE_PLAN.exists():
         failures.append("docs/plans/2026-06-14-make-root-override-protection.md is missing")
+    if not DEEP_REVIEW_PLAN.exists():
+        failures.append("docs/plans/2026-06-19-audio-ingestion-deep-review.md is missing")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -96,14 +99,22 @@ def main():
         "def ensure_ffmpeg_available():",
         "def ensure_ffprobe_available():",
         "MAX_AUDIO_DURATION_SECONDS = 15 * 60",
+        "MAX_FFPROBE_STDOUT_BYTES = 4096",
+        "MAX_AUDIO_CHANNELS = 2",
+        "MAX_AUDIO_SAMPLE_RATE_HZ = 96_000",
+        "MAX_DECODED_SAMPLES = 86_400_000",
         "def probe_audio_duration(audio_path, ffprobe_path):",
+        "def validate_probe_metadata(metadata, audio_path):",
+        "def ensure_private_regular_audio_file(audio_path):",
         "stdin=subprocess.DEVNULL",
         "stdout=subprocess.PIPE",
         "stderr=subprocess.DEVNULL",
         "timeout=FFPROBE_TIMEOUT_SECONDS",
         "duration > MAX_AUDIO_DURATION_SECONDS",
+        "duration * channels * sample_rate > MAX_DECODED_SAMPLES",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
         "TRANSCRIPTION_LOCK = threading.Lock()",
+        "TRANSCRIPTION_ADMISSION = threading.BoundedSemaphore(2)",
         "TRANSCRIPTION_LOCK_TIMEOUT_SECONDS = 30",
         "def transcribe_with_lock(model, data, suffix, ffprobe_path):",
         "TRANSCRIPTION_LOCK.acquire(timeout=TRANSCRIPTION_LOCK_TIMEOUT_SECONDS)",
@@ -140,6 +151,7 @@ def main():
         'cd "$(ROOT)" && $(PYTHON) -m ruff check .',
         '$(PYTHON) -m compileall -q "$(ROOT)/app.py" "$(ROOT)/scripts" "$(ROOT)/tests"',
         '$(PYTHON) "$(ROOT)/scripts/check_docs_plans.py"',
+        '$(PYTHON) "$(ROOT)/scripts/test_audio_boundary_contract.py"',
         'cd "$(ROOT)" && $(PYTHON) -m pytest -q',
         '$(PYTHON) -m py_compile "$(ROOT)/app.py"',
         "env -u PYTHONPATH $(PYTHON) -m pip check",
@@ -163,7 +175,7 @@ def main():
         "concurrency:",
         "cancel-in-progress: true",
         "runs-on: ubuntu-24.04",
-        "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3",
+        "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
         "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
     ):
         if contract not in workflow:

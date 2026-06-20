@@ -29,6 +29,10 @@ Priority:
 - Bound media probing and reject audio longer than 15 minutes before model work
 - Keep media-probe subprocesses non-interactive and isolated from server stdin
 - Discard unused ffprobe diagnostics instead of buffering stderr in memory
+- Bound ffprobe metadata output and validate container, codec, channels, and
+  sample rate before model work
+- Bound the combined decoded-sample budget before model work
+- Require temporary audio inputs to remain private regular files
 - Clean up temporary files when upload writes fail
 - Keep temporary-file deletion failures behind user-safe error messages
 - Report transcription failures without leaking local exception details
@@ -36,13 +40,15 @@ Priority:
 - Display transcripts as plain text
 - Serialize inference against the process-wide cached Whisper model
 - Bound waits for the shared model lock before creating temporary audio
+- Admit at most one active and one queued transcription request per process
 - Keep completed maintenance plans under `docs/plans`
 - Maintain minimal dependencies
 
 Next priorities:
 
 - Add an explicit total processing-time bound for accepted model calls
-- Add a bounded job queue with user-visible waiting and cancellation state
+- Replace the minimal admission gate with a production queue only if this demo
+  grows into a multi-user service
 - Add manual live-inference verification with synthetic audio
 - Review Streamlit and Whisper upgrades with real model smoke tests
 

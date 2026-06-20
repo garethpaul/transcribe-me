@@ -2,6 +2,8 @@ from concurrent.futures import ThreadPoolExecutor
 import importlib
 import os
 from pathlib import Path
+import stat
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -843,17 +845,27 @@ def test_transcribe_uploaded_file_checks_ffprobe_before_tempfile(monkeypatch):
     assert tempfiles == []
 
 
-def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch):
+def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch, tmp_path):
     app = import_app(monkeypatch, stub_probe=False)
     calls = []
+    audio_path = tmp_path / "audio.wav"
+    audio_path.write_bytes(WAV_BYTES)
+    audio_path.chmod(0o600)
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
-        return subprocess.CompletedProcess(command, 0, '{"format":{"duration":"12.5"}}', "")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            '{"format":{"duration":"12.5","format_name":"wav"},'
+            '"streams":[{"codec_name":"pcm_s16le","codec_type":"audio",'
+            '"sample_rate":"16000","channels":1}]}',
+            "",
+        )
 
     monkeypatch.setattr(app.subprocess, "run", run)
 
-    assert app.probe_audio_duration("/tmp/audio.wav", "/tools/ffprobe") == 12.5
+    assert app.probe_audio_duration(str(audio_path), "/tools/ffprobe") == 12.5
     assert calls == [
         (
             [
@@ -861,10 +873,12 @@ def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch):
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration",
+                "format=duration,format_name:stream=codec_name,codec_type,channels,sample_rate",
+                "-select_streams",
+                "a:0",
                 "-of",
                 "json",
-                "/tmp/audio.wav",
+                str(audio_path),
             ],
             {
                 "check": True,
@@ -879,6 +893,130 @@ def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch):
     assert app.FFPROBE_TIMEOUT_SECONDS == 10
 
 
+def valid_probe_json(**overrides):
+    metadata = {
+        "format": {"duration": "12.5", "format_name": "wav"},
+        "streams": [
+            {
+                "codec_name": "pcm_s16le",
+                "codec_type": "audio",
+                "sample_rate": "16000",
+                "channels": 1,
+            }
+        ],
+    }
+    for key, value in overrides.items():
+        if key in metadata["format"]:
+            metadata["format"][key] = value
+        else:
+            metadata["streams"][0][key] = value
+    return __import__("json").dumps(metadata)
+
+
+def private_audio_path(tmp_path, name="private.wav"):
+    audio_path = tmp_path / name
+    audio_path.write_bytes(WAV_BYTES)
+    audio_path.chmod(0o600)
+    return audio_path
+
+
+def test_probe_audio_duration_rejects_oversized_stdout(monkeypatch, tmp_path):
+    app = import_app(monkeypatch, stub_probe=False)
+    audio_path = tmp_path / "private.wav"
+    audio_path.write_bytes(WAV_BYTES)
+    audio_path.chmod(0o600)
+    stdout = valid_probe_json() + (" " * 4096)
+    monkeypatch.setattr(
+        app.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout, ""),
+    )
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.probe_audio_duration(str(audio_path), "/tools/ffprobe")
+
+
+@pytest.mark.parametrize(
+    ("stdout", "path"),
+    [
+        ('{"format":{"duration":"12.5","format_name":"wav"},"streams":[]}', "/tmp/a.wav"),
+        (valid_probe_json(codec_type="video"), "/tmp/a.wav"),
+        (valid_probe_json(format_name="mov,mp4,m4a,3gp,3g2,mj2"), "/tmp/a.wav"),
+        (valid_probe_json(codec_name="aac"), "/tmp/a.wav"),
+        (valid_probe_json(channels=3), "/tmp/a.wav"),
+        (valid_probe_json(channels=True), "/tmp/a.wav"),
+        (valid_probe_json(channels=1.5), "/tmp/a.wav"),
+        (valid_probe_json(sample_rate="192000"), "/tmp/a.wav"),
+        (valid_probe_json(sample_rate=True), "/tmp/a.wav"),
+        (
+            valid_probe_json(duration="900", channels=2, sample_rate="96000"),
+            "/tmp/a.wav",
+        ),
+    ],
+)
+def test_probe_audio_duration_rejects_unsafe_metadata(monkeypatch, stdout, path, tmp_path):
+    app = import_app(monkeypatch, stub_probe=False)
+    audio_path = tmp_path / Path(path).name
+    audio_path.write_bytes(WAV_BYTES)
+    audio_path.chmod(0o600)
+    monkeypatch.setattr(
+        app.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout, ""),
+    )
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.probe_audio_duration(str(audio_path), "/tools/ffprobe")
+
+
+def test_probe_audio_duration_rejects_symlink_before_subprocess(monkeypatch, tmp_path):
+    app = import_app(monkeypatch, stub_probe=False)
+    target = tmp_path / "target.wav"
+    target.write_bytes(WAV_BYTES)
+    link = tmp_path / "link.wav"
+    link.symlink_to(target)
+    calls = []
+    monkeypatch.setattr(app.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.probe_audio_duration(str(link), "/tools/ffprobe")
+
+    assert calls == []
+
+
+def test_write_audio_bytes_creates_private_regular_file(monkeypatch):
+    app = import_app(monkeypatch)
+    path = app.write_audio_bytes(WAV_BYTES, ".wav")
+    try:
+        metadata = os.lstat(path)
+        assert stat.S_ISREG(metadata.st_mode)
+        assert stat.S_IMODE(metadata.st_mode) == 0o600
+    finally:
+        os.unlink(path)
+
+
+def test_transcribe_uploaded_file_rejects_excess_admission_before_lock(monkeypatch):
+    app = import_app(monkeypatch)
+
+    class FullAdmission:
+        def acquire(self, blocking):
+            assert blocking is False
+            return False
+
+        def release(self):
+            raise AssertionError("unacquired admission must not be released")
+
+    class UnusedLock:
+        def acquire(self, timeout):
+            raise AssertionError("full admission must reject before the transcription lock")
+
+    monkeypatch.setattr(app, "TRANSCRIPTION_ADMISSION", FullAdmission())
+    monkeypatch.setattr(app, "TRANSCRIPTION_LOCK", UnusedLock())
+
+    with pytest.raises(app.TranscriptionError, match="busy"):
+        app.transcribe_uploaded_file(FakeUpload(), FakeModel())
+
+
 @pytest.mark.parametrize(
     "stdout",
     [
@@ -891,8 +1029,9 @@ def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch):
         '{"format":{"duration":"-1"}}',
     ],
 )
-def test_probe_audio_duration_rejects_invalid_results(monkeypatch, stdout):
+def test_probe_audio_duration_rejects_invalid_results(monkeypatch, stdout, tmp_path):
     app = import_app(monkeypatch, stub_probe=False)
+    audio_path = private_audio_path(tmp_path)
     monkeypatch.setattr(
         app.subprocess,
         "run",
@@ -900,7 +1039,7 @@ def test_probe_audio_duration_rejects_invalid_results(monkeypatch, stdout):
     )
 
     with pytest.raises(app.TranscriptionError, match="Transcription failed"):
-        app.probe_audio_duration("/tmp/private.wav", "/tools/ffprobe")
+        app.probe_audio_duration(str(audio_path), "/tools/ffprobe")
 
 
 @pytest.mark.parametrize(
@@ -911,8 +1050,9 @@ def test_probe_audio_duration_rejects_invalid_results(monkeypatch, stdout):
         OSError("private path"),
     ],
 )
-def test_probe_audio_duration_sanitizes_probe_failures(monkeypatch, error):
+def test_probe_audio_duration_sanitizes_probe_failures(monkeypatch, error, tmp_path):
     app = import_app(monkeypatch, stub_probe=False)
+    audio_path = private_audio_path(tmp_path)
 
     def fail(*args, **kwargs):
         raise error
@@ -920,13 +1060,14 @@ def test_probe_audio_duration_sanitizes_probe_failures(monkeypatch, error):
     monkeypatch.setattr(app.subprocess, "run", fail)
 
     with pytest.raises(app.TranscriptionError, match="^Transcription failed") as raised:
-        app.probe_audio_duration("/tmp/private.wav", "/tools/ffprobe")
+        app.probe_audio_duration(str(audio_path), "/tools/ffprobe")
 
     assert "private" not in str(raised.value)
 
 
-def test_probe_audio_duration_rejects_excessive_duration(monkeypatch):
+def test_probe_audio_duration_rejects_excessive_duration(monkeypatch, tmp_path):
     app = import_app(monkeypatch, stub_probe=False)
+    audio_path = private_audio_path(tmp_path)
     assert app.MAX_AUDIO_DURATION_SECONDS == 15 * 60
     duration = app.MAX_AUDIO_DURATION_SECONDS + 0.001
     monkeypatch.setattr(
@@ -935,13 +1076,13 @@ def test_probe_audio_duration_rejects_excessive_duration(monkeypatch):
         lambda *args, **kwargs: subprocess.CompletedProcess(
             args[0],
             0,
-            '{"format":{"duration":"%s"}}' % duration,
+            valid_probe_json(duration=str(duration)),
             "",
         ),
     )
 
     with pytest.raises(app.TranscriptionError, match="longer than 15 minutes"):
-        app.probe_audio_duration("/tmp/private.wav", "/tools/ffprobe")
+        app.probe_audio_duration(str(audio_path), "/tools/ffprobe")
 
 
 def test_transcribe_uploaded_file_rejects_long_audio_before_model_load(monkeypatch):
@@ -980,3 +1121,50 @@ def test_transcribe_uploaded_file_rejects_content_before_loading_model(monkeypat
         app.transcribe_uploaded_file(FakeUpload(data=b"not-audio"))
 
     assert loaded == []
+
+
+@pytest.mark.parametrize("suffix", [".wav", ".mp3", ".m4a"])
+def test_probe_audio_duration_accepts_synthetic_audio(monkeypatch, tmp_path, suffix):
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffprobe_path = shutil.which("ffprobe")
+    if ffmpeg_path is None or ffprobe_path is None:
+        pytest.skip("ffmpeg and ffprobe are required for the synthetic integration test")
+    app = import_app(monkeypatch, stub_probe=False)
+    audio_path = tmp_path / ("synthetic" + suffix)
+    subprocess.run(
+        [
+            ffmpeg_path,
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=0.1",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            str(audio_path),
+        ],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+    )
+    audio_path.chmod(0o600)
+
+    duration = app.probe_audio_duration(str(audio_path), ffprobe_path)
+
+    assert 0 < duration <= 1
+
+
+def test_probe_audio_duration_rejects_synthetic_truncated_wav(monkeypatch, tmp_path):
+    ffprobe_path = shutil.which("ffprobe")
+    if ffprobe_path is None:
+        pytest.skip("ffprobe is required for the synthetic integration test")
+    app = import_app(monkeypatch, stub_probe=False)
+    audio_path = private_audio_path(tmp_path, "truncated.wav")
+
+    with pytest.raises(app.TranscriptionError, match="Transcription failed"):
+        app.probe_audio_duration(str(audio_path), ffprobe_path)

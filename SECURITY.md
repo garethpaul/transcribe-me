@@ -39,23 +39,27 @@ signatures and their declared RIFF, `ftyp`, or ID3 extent before temporary-file
 or model work begins. These checks are defense in depth rather than a
 replacement for ffmpeg's complete parsing.
 
-Accepted temporary audio is probed with a 10-second subprocess timeout before
-the Whisper model loads. Missing, invalid, non-finite, non-positive, or longer
-than 15-minute duration metadata is rejected behind stable user-facing errors;
-probe output and local paths are not exposed. The ffprobe child's stdin is
-connected to the null device rather than inherited from the Streamlit process.
-Only the duration JSON stdout is retained; unused ffprobe stderr is discarded
-instead of buffered in application memory.
+Accepted temporary audio must be a private regular file and is probed with a
+10-second subprocess timeout before the Whisper model loads. ffprobe selects
+only the first audio stream and returns a fixed metadata shape. Missing audio,
+unexpected WAV/MP3/M4A container/codec pairs, invalid or longer-than-15-minute
+duration, more than two channels, sample rates above 96 kHz, and JSON output
+above 4 KiB are rejected behind stable user-facing errors. The combined
+duration/channel/rate budget is capped at 86.4 million decoded samples; probe
+output and local paths are not exposed. The ffprobe child's stdin is connected
+to the null device rather than inherited from the Streamlit process. Unused
+stderr is discarded instead of buffered in application memory.
 
 Upload write failures should clean up any temporary file path they created and
 surface a generic user-facing save error without local path details.
 
 The Streamlit process shares one cached Whisper model across sessions.
 Transcription calls are serialized to avoid concurrent access to shared model
-resources; this lock is a reliability guard, not authentication, rate limiting,
-or a production workload queue. Lock acquisition is bounded to 30 seconds, and
-contended requests return a generic busy message before creating temporary
-audio.
+resources. A bounded admission gate permits one active request and one waiter;
+additional requests fail immediately. These controls are reliability guards,
+not authentication, rate limiting, or a production workload queue. Lock
+acquisition is bounded to 30 seconds, and contended requests return a generic
+busy message before creating temporary audio.
 
 ## Dependency and Supply Chain Security
 
