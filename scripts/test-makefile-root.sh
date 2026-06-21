@@ -2,21 +2,21 @@
 set -eu
 PATH=/usr/bin:/bin
 export PATH
-ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
+ROOT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/transcribe-make-authority-XXXXXX")
 trap 'rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
 unset MAKEFILES MAKEFILE_LIST MAKEFLAGS MFLAGS MAKEOVERRIDES ROOT SHELL
 CONTROL_DIR="$TEMP_ROOT/control"; CHECKOUT="$TEMP_ROOT/transcribe app's [gate] \"quoted\" \`touch TRANSCRIBE_ROOT_MARKER\`"; ATTACKER_ROOT="$TEMP_ROOT/attacker"; LOG="$TEMP_ROOT/commands.log"; SHELL_LOG="$TEMP_ROOT/shell.log"
-mkdir -p "$CONTROL_DIR" "$CHECKOUT/scripts" "$ATTACKER_ROOT"; CONTROL_DIR=$(CDPATH= cd -- "$CONTROL_DIR" && /bin/pwd -P); CHECKOUT=$(CDPATH= cd -- "$CHECKOUT" && /bin/pwd -P); MAKEFILE="$CHECKOUT/Makefile"; cp "$ROOT_DIR/Makefile" "$MAKEFILE"
+mkdir -p "$CONTROL_DIR" "$CHECKOUT/scripts" "$ATTACKER_ROOT"; CONTROL_DIR=$(CDPATH='' cd -- "$CONTROL_DIR" && /bin/pwd -P); CHECKOUT=$(CDPATH='' cd -- "$CHECKOUT" && /bin/pwd -P); MAKEFILE="$CHECKOUT/Makefile"; cp "$ROOT_DIR/Makefile" "$MAKEFILE"
 FAKE_PYTHON="$TEMP_ROOT/trusted python's \"quoted\" \`touch TRANSCRIBE_PYTHON_MARKER\` \$literal"
 cat >"$FAKE_PYTHON" <<'EOF'
 #!/bin/sh
 printf '%s|%s|%s\n' "$PWD" "$0" "$*" >> "$TRANSCRIBE_COMMAND_LOG"
 EOF
 chmod +x "$FAKE_PYTHON"
-for script in test-makefile-root.sh check_docs_plans.py test_ffprobe_stderr_contract.py test_audio_boundary_contract.py; do cat >"$CHECKOUT/scripts/$script" <<'EOF'
+for script in test-makefile-root.sh test-makefile-boundary.sh check_docs_plans.py test_ffprobe_stderr_contract.py test_audio_boundary_contract.py; do cat >"$CHECKOUT/scripts/$script" <<'EOF'
 #!/bin/sh
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
 printf '%s|%s|contract\n' "$root" "$0" >> "$TRANSCRIBE_COMMAND_LOG"
 EOF
 chmod +x "$CHECKOUT/scripts/$script"; done

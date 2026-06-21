@@ -78,6 +78,7 @@ audit:
 
 root-test:
 	/bin/sh "$$ROOT/scripts/test-makefile-root.sh"
+	/bin/sh "$$ROOT/scripts/test-makefile-boundary.sh"
 
 verify: root-test format lint test build
 
