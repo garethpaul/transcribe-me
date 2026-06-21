@@ -68,7 +68,7 @@ lint:
 	"$$PYTHON" -I -B "$$ROOT/scripts/test_audio_boundary_contract.py"
 
 test:
-	cd "$$ROOT" && "$$PYTHON" -I -B -m pytest -q
+	cd "$$ROOT" && "$$PYTHON" -I -B -c 'import sys, pytest; sys.path.insert(0, "."); raise SystemExit(pytest.main(["-q"]))'
 
 build:
 	"$$PYTHON" -I -B -m py_compile "$$ROOT/app.py"

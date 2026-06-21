@@ -222,7 +222,7 @@ def main():
         '"$$PYTHON" -I -B -m compileall -q "$$ROOT/app.py" "$$ROOT/scripts" "$$ROOT/tests"',
         '"$$PYTHON" -I -B "$$ROOT/scripts/check_docs_plans.py"',
         '"$$PYTHON" -I -B "$$ROOT/scripts/test_audio_boundary_contract.py"',
-        'cd "$$ROOT" && "$$PYTHON" -I -B -m pytest -q',
+        'cd "$$ROOT" && "$$PYTHON" -I -B -c \'import sys, pytest; sys.path.insert(0, "."); raise SystemExit(pytest.main(["-q"]))\'',
         '"$$PYTHON" -I -B -m py_compile "$$ROOT/app.py"',
         'env -u PYTHONPATH "$$PYTHON" -I -B -m pip check',
         'pip_audit --requirement "$$ROOT/requirements.txt" --no-deps --disable-pip',
