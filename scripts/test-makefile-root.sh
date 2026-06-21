@@ -1,22 +1,24 @@
 #!/usr/bin/env sh
 set -eu
+HOST_PYTHON=${PYTHON:-python3}
+case $HOST_PYTHON in */*) ;; *) HOST_PYTHON=$(command -v "$HOST_PYTHON") ;; esac
 PATH=/usr/bin:/bin
 export PATH
-ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
+ROOT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/transcribe-make-authority-XXXXXX")
 trap 'rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
 unset MAKEFILES MAKEFILE_LIST MAKEFLAGS MFLAGS MAKEOVERRIDES ROOT SHELL
 CONTROL_DIR="$TEMP_ROOT/control"; CHECKOUT="$TEMP_ROOT/transcribe app's [gate] \"quoted\" \`touch TRANSCRIBE_ROOT_MARKER\`"; ATTACKER_ROOT="$TEMP_ROOT/attacker"; LOG="$TEMP_ROOT/commands.log"; SHELL_LOG="$TEMP_ROOT/shell.log"
-mkdir -p "$CONTROL_DIR" "$CHECKOUT/scripts" "$ATTACKER_ROOT"; CONTROL_DIR=$(CDPATH= cd -- "$CONTROL_DIR" && /bin/pwd -P); CHECKOUT=$(CDPATH= cd -- "$CHECKOUT" && /bin/pwd -P); MAKEFILE="$CHECKOUT/Makefile"; cp "$ROOT_DIR/Makefile" "$MAKEFILE"
+mkdir -p "$CONTROL_DIR" "$CHECKOUT/scripts" "$ATTACKER_ROOT"; CONTROL_DIR=$(CDPATH='' cd -- "$CONTROL_DIR" && /bin/pwd -P); CHECKOUT=$(CDPATH='' cd -- "$CHECKOUT" && /bin/pwd -P); MAKEFILE="$CHECKOUT/Makefile"; cp "$ROOT_DIR/Makefile" "$MAKEFILE"
 FAKE_PYTHON="$TEMP_ROOT/trusted python's \"quoted\" \`touch TRANSCRIBE_PYTHON_MARKER\` \$literal"
 cat >"$FAKE_PYTHON" <<'EOF'
 #!/bin/sh
 printf '%s|%s|%s\n' "$PWD" "$0" "$*" >> "$TRANSCRIBE_COMMAND_LOG"
 EOF
 chmod +x "$FAKE_PYTHON"
-for script in test-makefile-root.sh check_docs_plans.py test_ffprobe_stderr_contract.py test_audio_boundary_contract.py; do cat >"$CHECKOUT/scripts/$script" <<'EOF'
+for script in test-makefile-root.sh test-makefile-boundary.sh check_docs_plans.py test_ffprobe_stderr_contract.py test_audio_boundary_contract.py; do cat >"$CHECKOUT/scripts/$script" <<'EOF'
 #!/bin/sh
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && /bin/pwd -P)
 printf '%s|%s|contract\n' "$root" "$0" >> "$TRANSCRIBE_COMMAND_LOG"
 EOF
 chmod +x "$CHECKOUT/scripts/$script"; done
@@ -31,4 +33,12 @@ PRE="$TEMP_ROOT/pre.mk"; PRE_MARKER="$TEMP_ROOT/pre-ran"; printf '%s\n' "\$(shel
 EARLY="$TEMP_ROOT/early.mk"; EARLY_MARKER="$TEMP_ROOT/early-ran"; printf '%s\n' "\$(shell /usr/bin/touch '$EARLY_MARKER')" >"$EARLY"; if (cd "$CONTROL_DIR"&&/usr/bin/make --no-print-directory -f "$EARLY" -f "$MAKEFILE" check) >"$TEMP_ROOT/early" 2>&1; then exit 1; fi; [ -e "$EARLY_MARKER" ]
 if (cd "$CONTROL_DIR"&&/usr/bin/make --no-print-directory -f "$MAKEFILE" MAKEFLAGS=-n check) >"$TEMP_ROOT/makeflags" 2>&1; then exit 1; fi; grep -Fq 'MAKEFLAGS must not be overridden' "$TEMP_ROOT/makeflags"
 for flag in -n --just-print --dry-run --recon -t --touch -q --question -i --ignore-errors; do if (cd "$CONTROL_DIR"&&/usr/bin/make "$flag" --no-print-directory -f "$MAKEFILE" check) >"$TEMP_ROOT/flag" 2>&1; then exit 1; fi; grep -Fq 'non-executing or error-ignoring MAKEFLAGS are not supported' "$TEMP_ROOT/flag"; done
-printf '%s\n' 'Make authority tests passed: 40 target/authority cases, 1 literal-dollar tool case, 1 raw Make-syntax rejection, 2 MAKEFILE_LIST rejections, 2 contained startup-boundary cases, 1 caller MAKEFLAGS rejection, and 10 mode-flag rejections'
+ISOLATION_DIR="$TEMP_ROOT/pythonpath"; ISOLATION_MARKER="$TEMP_ROOT/pythonpath-ran"; mkdir -p "$ISOLATION_DIR"
+cat >"$ISOLATION_DIR/sitecustomize.py" <<'PYTHON'
+import os
+open(os.environ["TRANSCRIBE_PYTHONPATH_MARKER"], "w").close()
+os._exit(0)
+PYTHON
+(cd "$CONTROL_DIR" && PYTHONPATH="$ISOLATION_DIR" TRANSCRIBE_PYTHONPATH_MARKER="$ISOLATION_MARKER" /usr/bin/make --no-print-directory -f "$ROOT_DIR/Makefile" "PYTHON=$HOST_PYTHON" build) >"$TEMP_ROOT/pythonpath.out" 2>&1
+[ ! -e "$ISOLATION_MARKER" ]
+printf '%s\n' 'Make authority tests passed: 40 target/authority cases, 1 literal-dollar tool case, 1 raw Make-syntax rejection, 2 MAKEFILE_LIST rejections, 2 contained startup-boundary cases, 1 caller MAKEFLAGS rejection, 10 mode-flag rejections, and 1 hostile PYTHONPATH runtime gate'

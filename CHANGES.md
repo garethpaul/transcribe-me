@@ -2,10 +2,9 @@
 
 ## 2026-06-21
 
-- Isolated Make verification authority from caller-controlled roots, shells,
-  startup files, execution modes, and Make-syntax Python overrides.
-- Added adversarial authority coverage and pinned hosted verification dispatch
-  to the absolute system Make binary.
+- Narrowed Make authority claims to the sole checked-in Makefile path; caller-supplied makefiles, recipe replacements, target-specific shell overrides, and PATH-shadowed Python remain outside that boundary.
+- Kept adversarial coverage for the checked-in Makefile path and pinned hosted
+  verification dispatch to the absolute system Make binary.
 
 ## 2026-06-19
 

@@ -195,8 +195,10 @@ Do not commit real user audio or transcripts.
   before sensitive temporary audio is written.
 - See `docs/plans/2026-06-14-make-root-override-protection.md` for repository-
   anchored Make verification under hostile root assignments.
-- See `docs/plans/2026-06-21-make-authority-isolation.md` for isolated Make
-  startup, shell, trusted-Python, and target authority across every gate.
+- See `docs/plans/2026-06-21-make-authority-isolation.md` for the bounded
+  checked-in Makefile authority contract.
+- Caller-supplied `MAKEFILES`, extra `-f` files, target-specific variables, shell overrides, and replaced public-target recipes are outside the local Make trust boundary.
+- `python3` is resolved from the caller's `PATH` unless `PYTHON=/absolute/path` is supplied.
 - See `CHANGES.md` for the maintenance history.
 
 ## Contributing

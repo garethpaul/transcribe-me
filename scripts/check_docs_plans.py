@@ -22,6 +22,23 @@ ROOT_OVERRIDE_PLAN = DOCS_PLANS / "2026-06-14-make-root-override-protection.md"
 DEEP_REVIEW_PLAN = DOCS_PLANS / "2026-06-19-audio-ingestion-deep-review.md"
 MAKE_AUTHORITY_PLAN = DOCS_PLANS / "2026-06-21-make-authority-isolation.md"
 
+MAKE_BOUNDARY_README = (
+    "Caller-supplied `MAKEFILES`, extra `-f` files, target-specific variables, shell "
+    "overrides, and replaced public-target recipes are outside the local Make trust boundary."
+)
+MAKE_BOUNDARY_PYTHON = (
+    "`python3` is resolved from the caller's `PATH` unless `PYTHON=/absolute/path` is supplied."
+)
+MAKE_BOUNDARY_STARTUP = (
+    "Startup makefiles can execute while GNU Make is parsing, before the repository Makefile "
+    "can reject them."
+)
+MAKE_BOUNDARY_CHANGES = (
+    "Narrowed Make authority claims to the sole checked-in Makefile path; caller-supplied "
+    "makefiles, recipe replacements, target-specific shell overrides, and PATH-shadowed "
+    "Python remain outside that boundary."
+)
+
 
 def main():
     failures = []
@@ -60,6 +77,9 @@ def main():
     make_authority_runner = ROOT / "scripts" / "test-makefile-root.sh"
     if not make_authority_runner.exists() or not (make_authority_runner.stat().st_mode & 0o111):
         failures.append("scripts/test-makefile-root.sh must exist and be executable")
+    make_boundary_runner = ROOT / "scripts" / "test-makefile-boundary.sh"
+    if not make_boundary_runner.exists() or not (make_boundary_runner.stat().st_mode & 0o111):
+        failures.append("scripts/test-makefile-boundary.sh must exist and be executable")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -80,6 +100,33 @@ def main():
     for relative_path, contract in documentation_contracts.items():
         if contract not in (ROOT / relative_path).read_text(encoding="utf-8"):
             failures.append(f"{relative_path} must document ffprobe stdin isolation")
+
+    boundary_contracts = {
+        "README.md": (MAKE_BOUNDARY_README, MAKE_BOUNDARY_PYTHON),
+        "docs/plans/2026-06-21-make-authority-isolation.md": (
+            MAKE_BOUNDARY_STARTUP,
+            "It also does not claim to sandbox arbitrary caller-supplied Make programs.",
+        ),
+        "CHANGES.md": (MAKE_BOUNDARY_CHANGES,),
+    }
+    for relative_path, contracts in boundary_contracts.items():
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        for contract in contracts:
+            if contract not in text:
+                failures.append(f"{relative_path} must document Make boundary: {contract}")
+    forbidden_make_overclaims = {
+        "README.md": (
+            "isolated Make startup, shell, trusted-Python, and target authority across every gate",
+        ),
+        "CHANGES.md": (
+            "Isolated Make verification authority from caller-controlled roots, shells, startup files",
+        ),
+    }
+    for relative_path, overclaims in forbidden_make_overclaims.items():
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        for overclaim in overclaims:
+            if overclaim in text:
+                failures.append(f"{relative_path} still overclaims Make boundary: {overclaim}")
 
     app_source = (ROOT / "app.py").read_text(encoding="utf-8")
     if "st.text(transcript)" not in app_source:
@@ -167,16 +214,17 @@ def main():
         "audit build check format lint root-test test verify: __repository-make-authority",
         "root-test:",
         '"$$ROOT/scripts/test-makefile-root.sh"',
+        '"$$ROOT/scripts/test-makefile-boundary.sh"',
         "verify: root-test format lint test build",
         "check: verify audit",
-        'cd "$$ROOT" && "$$PYTHON" -m ruff format --check .',
-        'cd "$$ROOT" && "$$PYTHON" -m ruff check .',
-        '"$$PYTHON" -m compileall -q "$$ROOT/app.py" "$$ROOT/scripts" "$$ROOT/tests"',
-        '"$$PYTHON" "$$ROOT/scripts/check_docs_plans.py"',
-        '"$$PYTHON" "$$ROOT/scripts/test_audio_boundary_contract.py"',
-        'cd "$$ROOT" && "$$PYTHON" -m pytest -q',
-        '"$$PYTHON" -m py_compile "$$ROOT/app.py"',
-        'env -u PYTHONPATH "$$PYTHON" -m pip check',
+        'cd "$$ROOT" && "$$PYTHON" -I -B -m ruff format --check .',
+        'cd "$$ROOT" && "$$PYTHON" -I -B -m ruff check .',
+        '"$$PYTHON" -I -B -m compileall -q "$$ROOT/app.py" "$$ROOT/scripts" "$$ROOT/tests"',
+        '"$$PYTHON" -I -B "$$ROOT/scripts/check_docs_plans.py"',
+        '"$$PYTHON" -I -B "$$ROOT/scripts/test_audio_boundary_contract.py"',
+        'cd "$$ROOT" && "$$PYTHON" -I -B -c \'import sys, pytest; sys.path.insert(0, "."); raise SystemExit(pytest.main(["-q"]))\'',
+        '"$$PYTHON" -I -B -m py_compile "$$ROOT/app.py"',
+        'env -u PYTHONPATH "$$PYTHON" -I -B -m pip check',
         'pip_audit --requirement "$$ROOT/requirements.txt" --no-deps --disable-pip',
     ):
         if contract not in makefile:
