@@ -79,7 +79,7 @@ def test_make_check_audits_pinned_direct_runtime_dependencies():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
 
     assert "override ROOT := $(shell path=" in makefile
-    assert 'env -u PYTHONPATH "$$PYTHON" -m pip check' in makefile
+    assert 'env -u PYTHONPATH "$$PYTHON" -I -B -m pip check' in makefile
     assert 'pip_audit --requirement "$$ROOT/requirements.txt" --no-deps --disable-pip' in makefile
 
 
