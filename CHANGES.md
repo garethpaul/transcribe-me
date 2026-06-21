@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-06-21
+
+- Isolated Make verification authority from caller-controlled roots, shells,
+  startup files, execution modes, and Make-syntax Python overrides.
+- Added adversarial authority coverage and pinned hosted verification dispatch
+  to the absolute system Make binary.
+
 ## 2026-06-19
 
 - Added fixed-shape first-audio-stream probing with a 4 KiB output cap and

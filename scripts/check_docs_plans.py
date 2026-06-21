@@ -20,6 +20,7 @@ FFPROBE_STDIN_PLAN = DOCS_PLANS / "2026-06-13-ffprobe-stdin-isolation.md"
 FFPROBE_STDERR_PLAN = DOCS_PLANS / "2026-06-17-ffprobe-stderr-boundary.md"
 ROOT_OVERRIDE_PLAN = DOCS_PLANS / "2026-06-14-make-root-override-protection.md"
 DEEP_REVIEW_PLAN = DOCS_PLANS / "2026-06-19-audio-ingestion-deep-review.md"
+MAKE_AUTHORITY_PLAN = DOCS_PLANS / "2026-06-21-make-authority-isolation.md"
 
 
 def main():
@@ -54,6 +55,11 @@ def main():
         failures.append("docs/plans/2026-06-14-make-root-override-protection.md is missing")
     if not DEEP_REVIEW_PLAN.exists():
         failures.append("docs/plans/2026-06-19-audio-ingestion-deep-review.md is missing")
+    if not MAKE_AUTHORITY_PLAN.exists():
+        failures.append("docs/plans/2026-06-21-make-authority-isolation.md is missing")
+    make_authority_runner = ROOT / "scripts" / "test-makefile-root.sh"
+    if not make_authority_runner.exists() or not (make_authority_runner.stat().st_mode & 0o111):
+        failures.append("scripts/test-makefile-root.sh must exist and be executable")
 
     plans = sorted(DOCS_PLANS.glob("*.md")) if DOCS_PLANS.exists() else []
     if not plans:
@@ -137,25 +143,41 @@ def main():
         failures.append("Streamlit must reject uploads above the app's 25 MB limit")
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    root_declaration = "override ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))"
+    root_declaration = "override ROOT := $(shell path='$(subst ','\"'\"',$(value MAKEFILE_LIST))'"
     root_assignments = re.findall(r"^(?:override\s+)?ROOT\s*[:+?]?=", makefile, re.MULTILINE)
     if len(root_assignments) != 1 or makefile.count(root_declaration) != 1:
         failures.append("Makefile must contain exactly one protected repository-root declaration")
-    if makefile.count(f"{root_declaration}\nPYTHON ?= python3") != 1:
-        failures.append("Makefile must keep the protected root before the Python override")
+    python_declaration = "PYTHON ?= python3\noverride PYTHON := $(value PYTHON)\nexport PYTHON"
+    if makefile.count(python_declaration) != 1 or makefile.find(python_declaration) > makefile.find(
+        root_declaration
+    ):
+        failures.append(
+            "Makefile must freeze the Python override before resolving the protected root"
+        )
     for contract in (
-        ".PHONY: audit build check format lint test verify",
-        "verify: format lint test build",
+        ".DEFAULT_GOAL := check",
+        ".PHONY: __repository-make-authority audit build check format lint root-test test verify",
+        "PYTHON must be a literal executable path, not Make syntax",
+        "override SHELL := /bin/sh",
+        "MAKEFLAGS must not be overridden for repository verification",
+        "non-executing or error-ignoring MAKEFLAGS are not supported",
+        "MAKEFILES must be empty",
+        "MAKEFILE_LIST must not be overridden",
+        "repository Makefile must be loaded alone",
+        "audit build check format lint root-test test verify: __repository-make-authority",
+        "root-test:",
+        '"$$ROOT/scripts/test-makefile-root.sh"',
+        "verify: root-test format lint test build",
         "check: verify audit",
-        'cd "$(ROOT)" && $(PYTHON) -m ruff format --check .',
-        'cd "$(ROOT)" && $(PYTHON) -m ruff check .',
-        '$(PYTHON) -m compileall -q "$(ROOT)/app.py" "$(ROOT)/scripts" "$(ROOT)/tests"',
-        '$(PYTHON) "$(ROOT)/scripts/check_docs_plans.py"',
-        '$(PYTHON) "$(ROOT)/scripts/test_audio_boundary_contract.py"',
-        'cd "$(ROOT)" && $(PYTHON) -m pytest -q',
-        '$(PYTHON) -m py_compile "$(ROOT)/app.py"',
-        "env -u PYTHONPATH $(PYTHON) -m pip check",
-        'pip_audit --requirement "$(ROOT)/requirements.txt" --no-deps --disable-pip',
+        'cd "$$ROOT" && "$$PYTHON" -m ruff format --check .',
+        'cd "$$ROOT" && "$$PYTHON" -m ruff check .',
+        '"$$PYTHON" -m compileall -q "$$ROOT/app.py" "$$ROOT/scripts" "$$ROOT/tests"',
+        '"$$PYTHON" "$$ROOT/scripts/check_docs_plans.py"',
+        '"$$PYTHON" "$$ROOT/scripts/test_audio_boundary_contract.py"',
+        'cd "$$ROOT" && "$$PYTHON" -m pytest -q',
+        '"$$PYTHON" -m py_compile "$$ROOT/app.py"',
+        'env -u PYTHONPATH "$$PYTHON" -m pip check',
+        'pip_audit --requirement "$$ROOT/requirements.txt" --no-deps --disable-pip',
     ):
         if contract not in makefile:
             failures.append(f"Makefile verification contract is missing: {contract}")
@@ -164,6 +186,10 @@ def main():
         ROOT / "README.md"
     ).read_text(encoding="utf-8"):
         failures.append("README.md must index Make root override protection evidence")
+    if "docs/plans/2026-06-21-make-authority-isolation.md" not in (ROOT / "README.md").read_text(
+        encoding="utf-8"
+    ):
+        failures.append("README.md must index Make authority isolation evidence")
 
     workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
     workflow_files = sorted((ROOT / ".github" / "workflows").glob("*"))
@@ -177,6 +203,7 @@ def main():
         "runs-on: ubuntu-24.04",
         "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
         "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
+        "run: /usr/bin/make check",
     ):
         if contract not in workflow:
             failures.append(f"GitHub Actions verification contract is missing: {contract}")
