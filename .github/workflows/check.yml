@@ -40,4 +40,4 @@ jobs:
           --dest "${RUNNER_TEMP}/runtime-artifacts"
           --requirement requirements.txt
       - name: Run repository verification
-        run: make check
+        run: /usr/bin/make check

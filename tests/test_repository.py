@@ -58,7 +58,7 @@ def test_ci_runs_complete_check_with_least_privilege():
         "python -m pip download --no-deps",
         '--dest "${RUNNER_TEMP}/runtime-artifacts"',
         "--requirement requirements.txt",
-        "run: make check",
+        "run: /usr/bin/make check",
     )
 
     for contract in contracts:
@@ -78,14 +78,14 @@ def test_ci_runs_complete_check_with_least_privilege():
 def test_make_check_audits_pinned_direct_runtime_dependencies():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
 
-    assert "ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))" in makefile
-    assert "env -u PYTHONPATH $(PYTHON) -m pip check" in makefile
-    assert 'pip_audit --requirement "$(ROOT)/requirements.txt" --no-deps --disable-pip' in makefile
+    assert "override ROOT := $(shell path=" in makefile
+    assert 'env -u PYTHONPATH "$$PYTHON" -m pip check' in makefile
+    assert 'pip_audit --requirement "$$ROOT/requirements.txt" --no-deps --disable-pip' in makefile
 
 
 def test_make_check_runs_audio_boundary_mutations():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     mutation_script = ROOT / "scripts" / "test_audio_boundary_contract.py"
 
-    assert '"$(ROOT)/scripts/test_audio_boundary_contract.py"' in makefile
+    assert '"$$ROOT/scripts/test_audio_boundary_contract.py"' in makefile
     assert mutation_script.is_file()

@@ -195,6 +195,8 @@ Do not commit real user audio or transcripts.
   before sensitive temporary audio is written.
 - See `docs/plans/2026-06-14-make-root-override-protection.md` for repository-
   anchored Make verification under hostile root assignments.
+- See `docs/plans/2026-06-21-make-authority-isolation.md` for isolated Make
+  startup, shell, trusted-Python, and target authority across every gate.
 - See `CHANGES.md` for the maintenance history.
 
 ## Contributing
