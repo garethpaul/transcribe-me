@@ -854,14 +854,12 @@ def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch, tmp_path):
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            '{"format":{"duration":"12.5","format_name":"wav"},'
-            '"streams":[{"codec_name":"pcm_s16le","codec_type":"audio",'
-            '"sample_rate":"16000","channels":1}]}',
-            "",
+        kwargs["stdout"].write(
+            b'{"format":{"duration":"12.5","format_name":"wav"},'
+            b'"streams":[{"codec_name":"pcm_s16le","codec_type":"audio",'
+            b'"sample_rate":"16000","channels":1}]}'
         )
+        return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(app.subprocess, "run", run)
 
@@ -883,13 +881,13 @@ def test_probe_audio_duration_uses_bounded_json_probe(monkeypatch, tmp_path):
             {
                 "check": True,
                 "stdin": subprocess.DEVNULL,
-                "stdout": subprocess.PIPE,
+                "stdout": calls[0][1]["stdout"],
                 "stderr": subprocess.DEVNULL,
-                "text": True,
                 "timeout": 10,
             },
         )
     ]
+    assert calls[0][1]["stdout"].closed
     assert app.FFPROBE_TIMEOUT_SECONDS == 10
 
 
@@ -913,6 +911,14 @@ def valid_probe_json(**overrides):
     return __import__("json").dumps(metadata)
 
 
+def completed_probe(stdout):
+    def run(command, **kwargs):
+        kwargs["stdout"].write(stdout.encode("utf-8"))
+        return subprocess.CompletedProcess(command, 0)
+
+    return run
+
+
 def private_audio_path(tmp_path, name="private.wav"):
     audio_path = tmp_path / name
     audio_path.write_bytes(WAV_BYTES)
@@ -929,7 +935,7 @@ def test_probe_audio_duration_rejects_oversized_stdout(monkeypatch, tmp_path):
     monkeypatch.setattr(
         app.subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout, ""),
+        completed_probe(stdout),
     )
 
     with pytest.raises(app.TranscriptionError, match="Transcription failed"):
@@ -962,7 +968,7 @@ def test_probe_audio_duration_rejects_unsafe_metadata(monkeypatch, stdout, path,
     monkeypatch.setattr(
         app.subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout, ""),
+        completed_probe(stdout),
     )
 
     with pytest.raises(app.TranscriptionError, match="Transcription failed"):
@@ -1035,7 +1041,7 @@ def test_probe_audio_duration_rejects_invalid_results(monkeypatch, stdout, tmp_p
     monkeypatch.setattr(
         app.subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout, ""),
+        completed_probe(stdout),
     )
 
     with pytest.raises(app.TranscriptionError, match="Transcription failed"):
@@ -1073,12 +1079,7 @@ def test_probe_audio_duration_rejects_excessive_duration(monkeypatch, tmp_path):
     monkeypatch.setattr(
         app.subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args[0],
-            0,
-            valid_probe_json(duration=str(duration)),
-            "",
-        ),
+        completed_probe(valid_probe_json(duration=str(duration))),
     )
 
     with pytest.raises(app.TranscriptionError, match="longer than 15 minutes"):

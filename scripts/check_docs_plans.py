@@ -18,6 +18,7 @@ LOCK_BEFORE_TEMPFILE_PLAN = DOCS_PLANS / "2026-06-12-lock-before-tempfile.md"
 TRUNCATED_AUDIO_PLAN = DOCS_PLANS / "2026-06-13-truncated-audio-containers.md"
 FFPROBE_STDIN_PLAN = DOCS_PLANS / "2026-06-13-ffprobe-stdin-isolation.md"
 FFPROBE_STDERR_PLAN = DOCS_PLANS / "2026-06-17-ffprobe-stderr-boundary.md"
+FFPROBE_FILE_BACKED_PLAN = DOCS_PLANS / "2026-06-26-file-backed-ffprobe-output.md"
 ROOT_OVERRIDE_PLAN = DOCS_PLANS / "2026-06-14-make-root-override-protection.md"
 DEEP_REVIEW_PLAN = DOCS_PLANS / "2026-06-19-audio-ingestion-deep-review.md"
 MAKE_AUTHORITY_PLAN = DOCS_PLANS / "2026-06-21-make-authority-isolation.md"
@@ -68,6 +69,8 @@ def main():
         failures.append("docs/plans/2026-06-13-ffprobe-stdin-isolation.md is missing")
     if not FFPROBE_STDERR_PLAN.exists():
         failures.append("docs/plans/2026-06-17-ffprobe-stderr-boundary.md is missing")
+    if not FFPROBE_FILE_BACKED_PLAN.exists():
+        failures.append("docs/plans/2026-06-26-file-backed-ffprobe-output.md is missing")
     if not ROOT_OVERRIDE_PLAN.exists():
         failures.append("docs/plans/2026-06-14-make-root-override-protection.md is missing")
     if not DEEP_REVIEW_PLAN.exists():
@@ -93,13 +96,26 @@ def main():
             )
 
     documentation_contracts = {
-        "README.md": "null device instead of inherited",
-        "SECURITY.md": "null device rather than inherited",
-        "VISION.md": "Keep media-probe subprocesses non-interactive",
+        "README.md": (
+            "null device instead of inherited",
+            "private temporary file",
+            "at most 4 KiB into memory",
+        ),
+        "SECURITY.md": (
+            "null device rather than inherited",
+            "Probe stdout is written to a private",
+            "read into memory only when it is at",
+        ),
+        "VISION.md": (
+            "Keep media-probe subprocesses non-interactive",
+            "Keep ffprobe metadata file-backed",
+        ),
     }
-    for relative_path, contract in documentation_contracts.items():
-        if contract not in (ROOT / relative_path).read_text(encoding="utf-8"):
-            failures.append(f"{relative_path} must document ffprobe stdin isolation")
+    for relative_path, contracts in documentation_contracts.items():
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        for contract in contracts:
+            if contract not in text:
+                failures.append(f"{relative_path} must document ffprobe boundary: {contract}")
 
     boundary_contracts = {
         "README.md": (MAKE_BOUNDARY_README, MAKE_BOUNDARY_PYTHON),
@@ -160,9 +176,13 @@ def main():
         "def validate_probe_metadata(metadata, audio_path):",
         "def ensure_private_regular_audio_file(audio_path):",
         "stdin=subprocess.DEVNULL",
-        "stdout=subprocess.PIPE",
+        'with tempfile.TemporaryFile(mode="w+b") as probe_output:',
+        "stdout=probe_output",
         "stderr=subprocess.DEVNULL",
         "timeout=FFPROBE_TIMEOUT_SECONDS",
+        "probe_output.seek(0, os.SEEK_END)",
+        "probe_output.tell() > MAX_FFPROBE_STDOUT_BYTES",
+        "probe_output.read(MAX_FFPROBE_STDOUT_BYTES)",
         "duration > MAX_AUDIO_DURATION_SECONDS",
         "duration * channels * sample_rate > MAX_DECODED_SAMPLES",
         "data, suffix = validated_uploaded_audio(uploaded_file)",
@@ -179,7 +199,7 @@ def main():
         if contract not in app_source:
             failures.append(f"app.py must keep audio validation contract: {contract}")
 
-    if "capture_output=True" in app_source:
+    if "capture_output=True" in app_source or "stdout=subprocess.PIPE" in app_source:
         failures.append("ffprobe must not capture unused stderr in memory")
 
     if not re.search(r"^FFPROBE_TIMEOUT_SECONDS = 10$", app_source, re.MULTILINE):
@@ -292,7 +312,7 @@ def main():
         failures.append("tests must cover the bounded ffprobe command")
     for contract in (
         '"stdin": subprocess.DEVNULL',
-        '"stdout": subprocess.PIPE',
+        'assert calls[0][1]["stdout"].closed',
         '"stderr": subprocess.DEVNULL',
     ):
         if contract not in tests_source:

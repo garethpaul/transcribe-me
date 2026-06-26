@@ -72,9 +72,10 @@ only the first audio stream and confirm the expected container/codec pair, a
 finite positive duration no longer than 15 minutes, at most two channels, and a
 sample rate no higher than 96 kHz. The combined duration/channel/rate budget is
 capped at 86.4 million decoded samples. Its stdin uses the null device instead of inherited
-Streamlit process input. The probe's fixed-shape JSON
-stdout is capped at 4 KiB, and unused stderr is discarded rather than buffering
-attacker-influenced diagnostics in memory.
+Streamlit process input. The probe writes its fixed-shape JSON to a
+private temporary file, validates its size, and reads at most 4 KiB into memory.
+Unused stderr is discarded rather than buffering attacker-influenced
+diagnostics in memory.
 
 ## Testing and Verification
 

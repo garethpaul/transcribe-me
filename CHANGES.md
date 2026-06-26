@@ -1,5 +1,56 @@
 # Changes
 
+## 2026-06-26 10:12 PDT - P1 - Keep ffprobe output file-backed
+
+### Summary
+
+Replaced ffprobe's in-memory stdout pipe with a private temporary file so an
+unexpected child-output volume is not buffered in application memory before
+the existing 4 KiB accepted-metadata limit is enforced.
+
+### Work completed
+
+- Redirected fixed-shape ffprobe JSON to a private binary temporary file.
+- Checked the complete file size before reading and decoding at most 4 KiB.
+- Added regression and hostile-mutation coverage for restoring an in-memory
+  pipe, removing the size check, or introducing an unbounded read.
+
+### Threads
+
+- None; the bounded change was implemented directly with focused TDD.
+
+### Files changed
+
+- `app.py` — made ffprobe stdout file-backed and bounded the metadata read.
+- `tests/test_app.py` — exercised file-backed output, closure, and rejection.
+- `scripts/test_audio_boundary_contract.py` — enforced the new memory boundary.
+- `scripts/test_ffprobe_stderr_contract.py` — retained stderr discard coverage.
+- `scripts/check_docs_plans.py` — synchronized source and test contracts.
+- `README.md`, `SECURITY.md`, `VISION.md` — documented the precise boundary.
+- `docs/plans/2026-06-26-file-backed-ffprobe-output.md` — recorded the work.
+
+### Validation
+
+- 28 focused ffprobe-duration tests passed.
+- 13 hostile audio-boundary and four hostile stderr-boundary mutations passed.
+- Full pinned repository and external-directory `make check` verification is
+  recorded in the implementation plan.
+
+### Bugs / findings
+
+- P1: `subprocess.PIPE` buffered all stdout before the former 4 KiB check ran.
+- The ten-second subprocess timeout remains the total-output growth boundary;
+  this change specifically bounds application-memory ingestion, not disk use.
+
+### Blockers
+
+- Codex review may remain unavailable because the local CLI returns HTTP 401.
+
+### Next action
+
+- Require hosted checks on the exact PR head, merge that SHA, and confirm the
+  default-branch checks remain green.
+
 ## 2026-06-26 03:55 PDT - P2 - Reject unsafe thread-only model timeout
 
 ### Summary

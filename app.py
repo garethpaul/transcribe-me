@@ -238,32 +238,31 @@ def validate_probe_metadata(metadata, audio_path):
 def probe_audio_duration(audio_path, ffprobe_path):
     ensure_private_regular_audio_file(audio_path)
     try:
-        completed = subprocess.run(
-            [
-                ffprobe_path,
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration,format_name:stream=codec_name,codec_type,channels,sample_rate",
-                "-select_streams",
-                "a:0",
-                "-of",
-                "json",
-                audio_path,
-            ],
-            check=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=FFPROBE_TIMEOUT_SECONDS,
-        )
-        if (
-            not isinstance(completed.stdout, str)
-            or len(completed.stdout) > MAX_FFPROBE_STDOUT_BYTES
-        ):
-            raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
-        metadata = json.loads(completed.stdout)
+        with tempfile.TemporaryFile(mode="w+b") as probe_output:
+            subprocess.run(
+                [
+                    ffprobe_path,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration,format_name:stream=codec_name,codec_type,channels,sample_rate",
+                    "-select_streams",
+                    "a:0",
+                    "-of",
+                    "json",
+                    audio_path,
+                ],
+                check=True,
+                stdin=subprocess.DEVNULL,
+                stdout=probe_output,
+                stderr=subprocess.DEVNULL,
+                timeout=FFPROBE_TIMEOUT_SECONDS,
+            )
+            probe_output.seek(0, os.SEEK_END)
+            if probe_output.tell() > MAX_FFPROBE_STDOUT_BYTES:
+                raise TranscriptionError(TRANSCRIPTION_FAILURE_MESSAGE)
+            probe_output.seek(0)
+            metadata = json.loads(probe_output.read(MAX_FFPROBE_STDOUT_BYTES).decode("utf-8"))
     except (
         json.JSONDecodeError,
         KeyError,
