@@ -1,5 +1,49 @@
 # Changes
 
+## 2026-06-26 03:55 PDT - P2 - Reject unsafe thread-only model timeout
+
+### Summary
+
+Reviewed the remaining total-processing-time roadmap item and rejected a
+thread/future timeout because it cannot stop a running Whisper call and could
+release the shared-model lock while inference still uses the cached model.
+
+### Work completed
+
+- Traced admission, lock ownership, temporary-file lifetime, probe bounds, and
+  model invocation in `app.py` and the associated concurrency regressions.
+- Confirmed that a real total model-call bound requires an isolated worker that
+  can be terminated without violating cached-model or temporary-file ownership.
+
+### Threads
+
+- None; the review was completed directly to avoid speculative implementation.
+
+### Files changed
+
+- `CHANGES.md` — recorded the rejected unsafe approach and required next design.
+
+### Validation
+
+- Manual source and test review — confirmed the lock currently spans the full
+  model call and cleanup, and that a returning thread timeout cannot cancel it.
+- `python3 -I -B scripts/check_docs_plans.py` — passed.
+
+### Bugs / findings
+
+- P2: the documented 15-minute input bound is not a total processing deadline.
+- A thread-only timeout would create a false guarantee and unsafe lock release.
+
+### Blockers
+
+- Safe enforcement needs a process-isolated inference design plus real-model
+  smoke evidence for startup cost, termination, and cross-platform behavior.
+
+### Next action
+
+- Design and validate process-isolated inference before promising a total
+  processing-time bound; do not add a non-cancelling thread timeout.
+
 ## 2026-06-21
 
 - Narrowed Make authority claims to the sole checked-in Makefile path; caller-supplied makefiles, recipe replacements, target-specific shell overrides, and PATH-shadowed Python remain outside that boundary.
