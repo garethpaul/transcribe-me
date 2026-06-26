@@ -29,8 +29,9 @@ Priority:
 - Bound media probing and reject audio longer than 15 minutes before model work
 - Keep media-probe subprocesses non-interactive and isolated from server stdin
 - Discard unused ffprobe diagnostics instead of buffering stderr in memory
-- Bound ffprobe metadata output and validate container, codec, channels, and
-  sample rate before model work
+- Keep ffprobe metadata file-backed and read at most 4 KiB into memory after
+  size validation
+- Validate container, codec, channels, and sample rate before model work
 - Bound the combined decoded-sample budget before model work
 - Require temporary audio inputs to remain private regular files
 - Clean up temporary files when upload writes fail

@@ -9,7 +9,11 @@ def contract_errors(source, tests):
     errors = []
     source_contracts = (
         "MAX_FFPROBE_STDOUT_BYTES = 4096",
-        "len(completed.stdout) > MAX_FFPROBE_STDOUT_BYTES",
+        'with tempfile.TemporaryFile(mode="w+b") as probe_output:',
+        "stdout=probe_output",
+        "probe_output.seek(0, os.SEEK_END)",
+        "probe_output.tell() > MAX_FFPROBE_STDOUT_BYTES",
+        "probe_output.read(MAX_FFPROBE_STDOUT_BYTES)",
         '"-select_streams",',
         '"a:0",',
         'codec_name.startswith("pcm_")',
@@ -27,6 +31,12 @@ def contract_errors(source, tests):
     for contract in source_contracts:
         if contract not in source:
             errors.append(f"audio boundary source contract is missing: {contract}")
+    size_check = source.find("probe_output.tell() > MAX_FFPROBE_STDOUT_BYTES")
+    bounded_read = source.find("probe_output.read(MAX_FFPROBE_STDOUT_BYTES)")
+    if size_check < 0 or bounded_read < 0 or size_check > bounded_read:
+        errors.append("ffprobe output size must be checked before bounded reading")
+    if "probe_output.read()" in source:
+        errors.append("ffprobe output must not use an unbounded read")
     test_contracts = (
         "test_probe_audio_duration_rejects_oversized_stdout",
         "test_probe_audio_duration_rejects_unsafe_metadata",
@@ -51,9 +61,14 @@ def main():
 
     mutations = {
         "unbounded probe output": (
-            "len(completed.stdout) > MAX_FFPROBE_STDOUT_BYTES",
-            "len(completed.stdout) < MAX_FFPROBE_STDOUT_BYTES",
+            "probe_output.tell() > MAX_FFPROBE_STDOUT_BYTES",
+            "False",
         ),
+        "unbounded probe read": (
+            "probe_output.read(MAX_FFPROBE_STDOUT_BYTES)",
+            "probe_output.read()",
+        ),
+        "in-memory probe pipe": ("stdout=probe_output", "stdout=subprocess.PIPE"),
         "all-stream probing": ('"-select_streams",', '"-show_streams",'),
         "non-audio wav codec": ('codec_name.startswith("pcm_")', "bool(codec_name)"),
         "unsupported m4a codec": ('"alac",', '"opus",'),

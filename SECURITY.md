@@ -46,9 +46,11 @@ unexpected WAV/MP3/M4A container/codec pairs, invalid or longer-than-15-minute
 duration, more than two channels, sample rates above 96 kHz, and JSON output
 above 4 KiB are rejected behind stable user-facing errors. The combined
 duration/channel/rate budget is capped at 86.4 million decoded samples; probe
-output and local paths are not exposed. The ffprobe child's stdin is connected
-to the null device rather than inherited from the Streamlit process. Unused
-stderr is discarded instead of buffered in application memory.
+output and local paths are not exposed. Probe stdout is written to a private
+temporary file, checked before parsing, and read into memory only when it is at
+most 4 KiB. The ffprobe child's stdin uses the null device rather than inherited
+Streamlit process input. Unused stderr is discarded instead of buffered in
+application memory.
 
 Upload write failures should clean up any temporary file path they created and
 surface a generic user-facing save error without local path details.

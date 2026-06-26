@@ -9,7 +9,7 @@ def contract_errors(source, tests):
     errors = []
     for fragment in (
         "stdin=subprocess.DEVNULL",
-        "stdout=subprocess.PIPE",
+        "stdout=probe_output",
         "stderr=subprocess.DEVNULL",
         "timeout=FFPROBE_TIMEOUT_SECONDS",
     ):
@@ -19,7 +19,7 @@ def contract_errors(source, tests):
         errors.append("ffprobe must not buffer stderr through capture_output")
     for fragment in (
         '"stdin": subprocess.DEVNULL',
-        '"stdout": subprocess.PIPE',
+        'assert calls[0][1]["stdout"].closed',
         '"stderr": subprocess.DEVNULL',
         '"timeout": 10',
     ):
@@ -37,10 +37,10 @@ def main():
 
     mutations = {
         "combined capture": (
-            "stdout=subprocess.PIPE,\n            stderr=subprocess.DEVNULL,",
+            "stdout=probe_output,\n                stderr=subprocess.DEVNULL,",
             "capture_output=True,",
         ),
-        "missing stdout capture": ("stdout=subprocess.PIPE", "stdout=subprocess.DEVNULL"),
+        "missing stdout capture": ("stdout=probe_output", "stdout=subprocess.DEVNULL"),
         "buffered stderr": ("stderr=subprocess.DEVNULL", "stderr=subprocess.PIPE"),
         "inherited stderr": ("stderr=subprocess.DEVNULL,", ""),
     }
