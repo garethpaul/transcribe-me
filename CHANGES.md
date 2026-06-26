@@ -33,8 +33,10 @@ the existing 4 KiB accepted-metadata limit is enforced.
 
 - 28 focused ffprobe-duration tests passed.
 - 13 hostile audio-boundary and four hostile stderr-boundary mutations passed.
-- Full pinned repository and external-directory `make check` verification is
-  recorded in the implementation plan.
+- Full pinned repository and external-directory `make check` passed under
+  Python 3.10.20 and Python 3.12.3 with 90 tests per invocation.
+- Hosted Check run `28253655385` and CodeQL run `28253653906` passed on
+  implementation commit `e16ed2142bcefcf4263464d1d6d081565567dce9`.
 
 ### Bugs / findings
 
@@ -44,7 +46,8 @@ the existing 4 KiB accepted-metadata limit is enforced.
 
 ### Blockers
 
-- Codex review may remain unavailable because the local CLI returns HTTP 401.
+- Codex review was attempted once and skipped after the local CLI returned HTTP
+  401 for both WebSocket and HTTPS transports.
 
 ### Next action
 

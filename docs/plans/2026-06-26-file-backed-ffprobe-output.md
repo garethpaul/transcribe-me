@@ -41,6 +41,11 @@ not an in-memory cap and does not match the repository's bounded-output claim.
   3.10.20 and Python 3.12.3 environments: formatting, linting, documentation,
   90 tests, 17 hostile mutations, bytecode compilation, dependency checks, and
   the direct-runtime vulnerability audit were green in all four invocations.
+- Hosted Check run `28253655385` passed Python 3.10 and 3.12 verification, and
+  CodeQL run `28253653906` passed Actions and Python analysis on implementation
+  commit `e16ed2142bcefcf4263464d1d6d081565567dce9`.
+- `codex review --base main` was attempted once and could not authenticate; the
+  CLI returned HTTP 401 on both WebSocket and HTTPS transports.
 - No Whisper model, production audio, live transcription, or browser session
   was exercised.
 
