@@ -40,6 +40,37 @@ MAKE_BOUNDARY_CHANGES = (
     "Python remain outside that boundary."
 )
 
+# Whole-line, tab-anchored recipe pins. A substring pin is a PREFIX pin: it still matches
+# after ` || true`, `; true`, or a leading `-` is appended, all of which discard the
+# command's exit status while the command still runs and still logs a dispatch. Every
+# command `make check` relies on must appear as an EXACT line, exactly once.
+MAKEFILE_RECIPE_LINES = (
+    '\tcd "$$ROOT" && "$$PYTHON" -I -B -m ruff format --check .',
+    '\tcd "$$ROOT" && "$$PYTHON" -I -B -m ruff check .',
+    '\t"$$PYTHON" -I -B -m compileall -q "$$ROOT/app.py" "$$ROOT/scripts" "$$ROOT/tests"',
+    '\t"$$PYTHON" -I -B "$$ROOT/scripts/check_docs_plans.py"',
+    '\t"$$PYTHON" -I -B "$$ROOT/scripts/test_ffprobe_stderr_contract.py"',
+    '\t"$$PYTHON" -I -B "$$ROOT/scripts/test_audio_boundary_contract.py"',
+    '\tcd "$$ROOT" && "$$PYTHON" -I -B -c \'import sys, pytest; sys.path.insert(0, "."); '
+    'raise SystemExit(pytest.main(["-q"]))\'',
+    '\t"$$PYTHON" -I -B -m py_compile "$$ROOT/app.py"',
+    '\tenv -u PYTHONPATH "$$PYTHON" -I -B -m pip check',
+    '\tenv -u PYTHONPATH "$$PYTHON" -I -B -m pip_audit --requirement '
+    '"$$ROOT/requirements.txt" --no-deps --disable-pip',
+    '\t/bin/sh "$$ROOT/scripts/test-makefile-root.sh"',
+    '\t/bin/sh "$$ROOT/scripts/test-makefile-boundary.sh"',
+)
+MAKEFILE_RULE_LINES = (
+    "format:",
+    "lint:",
+    "test:",
+    "build:",
+    "audit:",
+    "root-test:",
+    "verify: root-test format lint test build",
+    "check: verify audit",
+)
+
 
 def main():
     failures = []
@@ -221,6 +252,21 @@ def main():
         failures.append(
             "Makefile must freeze the Python override before resolving the protected root"
         )
+    makefile_lines = makefile.splitlines()
+    for recipe_line in MAKEFILE_RECIPE_LINES:
+        occurrences = makefile_lines.count(recipe_line)
+        if occurrences != 1:
+            failures.append(
+                "Makefile must dispatch this command as an exact, unmodified line "
+                f"exactly once (found {occurrences}): {recipe_line!r}"
+            )
+    for rule_line in MAKEFILE_RULE_LINES:
+        occurrences = makefile_lines.count(rule_line)
+        if occurrences != 1:
+            failures.append(
+                "Makefile must declare this rule as an exact line exactly once "
+                f"(found {occurrences}): {rule_line!r}"
+            )
     for contract in (
         ".DEFAULT_GOAL := check",
         ".PHONY: __repository-make-authority audit build check format lint root-test test verify",
@@ -272,9 +318,16 @@ def main():
         "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
         "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0",
         "run: /usr/bin/make check",
+        "run: /bin/sh scripts/test-makefile-root.sh",
     ):
         if contract not in workflow:
             failures.append(f"GitHub Actions verification contract is missing: {contract}")
+    # The failure-injection observer runs inside `make check`'s own blast radius: if the
+    # root-test recipe line stops propagating its exit status, the observer still prints its
+    # diagnosis but `make check` reports success. A second, independent CI step runs the same
+    # observer out of band, where no Makefile recipe can discard its verdict.
+    if "continue-on-error" in workflow:
+        failures.append("GitHub Actions must not discard a step verdict with continue-on-error")
     if workflow.count("uses: actions/checkout@") != 1:
         failures.append("GitHub Actions must contain exactly one checkout step")
     if workflow.count("uses: actions/setup-python@") != 1:

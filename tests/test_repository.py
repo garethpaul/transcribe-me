@@ -59,10 +59,12 @@ def test_ci_runs_complete_check_with_least_privilege():
         '--dest "${RUNNER_TEMP}/runtime-artifacts"',
         "--requirement requirements.txt",
         "run: /usr/bin/make check",
+        "run: /bin/sh scripts/test-makefile-root.sh",
     )
 
     for contract in contracts:
         assert contract in workflow
+    assert "continue-on-error" not in workflow
     assert workflow_files == [ROOT / ".github" / "workflows" / "check.yml"]
     assert workflow.count("uses: actions/checkout@") == 1
     assert workflow.count("uses: actions/setup-python@") == 1
@@ -81,6 +83,45 @@ def test_make_check_audits_pinned_direct_runtime_dependencies():
     assert "override ROOT := $(shell path=" in makefile
     assert 'env -u PYTHONPATH "$$PYTHON" -I -B -m pip check' in makefile
     assert 'pip_audit --requirement "$$ROOT/requirements.txt" --no-deps --disable-pip' in makefile
+
+
+def test_make_recipes_do_not_discard_command_exit_status():
+    """Cross-guard for the exit-status channel, independent of root-test and lint.
+
+    root-test's failure injection runs inside `make check`'s blast radius, and the
+    whole-line recipe pins live in check_docs_plans.py (dispatched by `lint`). If either
+    of those recipe lines stopped propagating failures, this test -- dispatched by the
+    separate `test` target -- still fails.
+    """
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    recipe_lines = [line for line in makefile.splitlines() if line.startswith("\t")]
+    assert recipe_lines, "Makefile must contain recipe lines"
+    for line in recipe_lines:
+        assert "|| true" not in line, f"recipe discards its exit status: {line!r}"
+        assert not line.rstrip().endswith("; true"), f"recipe discards its exit status: {line!r}"
+        assert not line.startswith("\t-"), f"recipe ignores errors via a leading '-': {line!r}"
+
+
+def test_make_check_observes_failure_propagation_for_every_public_target():
+    """The authority runner must inject real failures, not just observe dispatch."""
+    runner = (ROOT / "scripts" / "test-makefile-root.sh").read_text(encoding="utf-8")
+
+    assert "TRANSCRIBE_FAIL_MATCH" in runner
+    assert "TRANSCRIBE_FAIL_SCRIPT" in runner
+    assert "reported success while the command matching" in runner
+    assert '[ "$injected" -eq 34 ]' in runner
+    for match in (
+        "format verify check|ruff format",
+        "lint verify check|ruff check",
+        "lint verify check|compileall",
+        "lint verify check|check_docs_plans.py",
+        "test verify check|pytest.main",
+        "build verify check|py_compile",
+        "audit check|pip check",
+        "audit check|pip_audit",
+    ):
+        assert match in runner, f"failure injection is missing a case: {match}"
 
 
 def test_make_check_runs_audio_boundary_mutations():

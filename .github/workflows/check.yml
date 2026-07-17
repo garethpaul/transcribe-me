@@ -41,3 +41,5 @@ jobs:
           --requirement requirements.txt
       - name: Run repository verification
         run: /usr/bin/make check
+      - name: Observe verification failure propagation out of band
+        run: /bin/sh scripts/test-makefile-root.sh

@@ -1,5 +1,28 @@
 # Changes
 
+## 2026-07-17 09:30 PDT - P1 - Observe verification failure propagation
+
+### Summary
+
+The Make authority harness asserted that every public target *dispatched* its
+verification commands, but its stand-in interpreter always exited `0`, so no
+check ever observed `make check` *gating*. Appending `|| true` to the `test:`
+recipe kept every existing pin byte-identical and shipped a failing test suite
+green: pytest printed `2 failed` and `make check` exited `0`. Added 34
+failure-injection propagation cases, tab-anchored whole-line recipe pins, an
+out-of-band CI observer step, and `continue-on-error` rejection.
+
+### Work completed
+
+- Injected per-invocation failures into every command `make check` dispatches and
+  required the invoking target to report failure, replacing dispatch-only
+  observation of the exit-status channel.
+- Upgraded substring Makefile recipe contracts to tab-anchored whole-line pins so
+  an appended `|| true`, `; true`, or leading `-` can no longer prefix-match.
+- Added an independent out-of-band CI step running the authority harness, plus
+  `test` target cross-guards, so a neutered `root-test` recipe cannot discard the
+  observer's own verdict.
+
 ## 2026-06-26 10:12 PDT - P1 - Keep ffprobe output file-backed
 
 ### Summary
